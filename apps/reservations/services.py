@@ -1,0 +1,669 @@
+import uuid
+from decimal import Decimal
+from django.db import transaction
+from django.utils import timezone
+from django.core.exceptions import ValidationError
+from django.forms.models import model_to_dict
+from apps.reservations.models import (
+    CorporateAccount, GroupBlock, Reservation, ReservationInventory,
+    ReservationRateSnapshot, ReservationGuest, ReservationEvent
+)
+from apps.crm.models import GuestProfile
+from apps.inventory.models import InventoryUnit, InventoryUnitType
+from apps.rates.models import RatePlan, RatePlanVersion
+
+def make_serializable(data):
+    if isinstance(data, dict):
+        return {k: make_serializable(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [make_serializable(x) for x in data]
+    elif isinstance(data, uuid.UUID):
+        return str(data)
+    elif isinstance(data, Decimal):
+        return str(data)
+    elif hasattr(data, 'isoformat'):
+        return data.isoformat()
+    return data
+
+class BookingEngine:
+    @staticmethod
+    def generate_confirmation_number():
+        return f"RET-{uuid.uuid4().hex[:8].upper()}"
+
+    @classmethod
+    @transaction.atomic
+    def create_booking(cls, tenant, property_obj, booking_data, user=None):
+        """
+        Creates a Reservation transaction, room allocations, guest linkings, and daily snapshots.
+        Expected booking_data format:
+        {
+            'primary_guest_id': UUID,
+            'reservation_source_id': UUID,
+            'group_block_id': UUID (optional),
+            'corporate_account_id': UUID (optional),
+            'reservation_type': str,
+            'market_segment': str,
+            'origin_country_id': UUID (optional),
+            'arrival_date': date,
+            'departure_date': date,
+            'booking_reference': str (optional),
+            'notes': str (optional),
+            'remarks': str (optional),
+            'special_requests': str (optional),
+            'allocations': [
+                {
+                    'inventory_unit_type_id': UUID,
+                    'check_in_date': date,
+                    'check_out_date': date,
+                    'adult_count': int,
+                    'child_count': int,
+                    'infant_count': int,
+                    'rate_plan_id': UUID,
+                    'nightly_rates': [
+                        {
+                            'date': date,
+                            'amount': Decimal,
+                            'rate_plan_version_id': UUID
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+        primary_guest = GuestProfile.objects.get(id=booking_data['primary_guest_id'], tenant=tenant)
+        
+        # Verify Corporate Account if provided
+        corp_account = None
+        if booking_data.get('corporate_account_id'):
+            corp_account = CorporateAccount.objects.get(id=booking_data['corporate_account_id'], tenant=tenant)
+
+        # Verify Group Block if provided
+        group_block = None
+        if booking_data.get('group_block_id'):
+            group_block = GroupBlock.objects.get(id=booking_data['group_block_id'], tenant=tenant)
+            if group_block.status != 'OPEN':
+                raise ValidationError("Cannot book against a closed or released group block.")
+            if group_block.cutoff_date < timezone.now().date():
+                raise ValidationError("Group block cutoff date has passed.")
+
+        # Create Reservation Header
+        conf_no = cls.generate_confirmation_number()
+        reservation = Reservation.objects.create(
+            tenant=tenant,
+            property=property_obj,
+            primary_guest=primary_guest,
+            reservation_source_id=booking_data['reservation_source_id'],
+            group_block=group_block,
+            corporate_account=corp_account,
+            status='PENDING',
+            booking_date=timezone.now().date(),
+            arrival_date=booking_data['arrival_date'],
+            departure_date=booking_data['departure_date'],
+            booking_reference=booking_data.get('booking_reference'),
+            notes=booking_data.get('notes'),
+            remarks=booking_data.get('remarks'),
+            special_requests=booking_data.get('special_requests'),
+            reservation_type=booking_data['reservation_type'],
+            market_segment=booking_data['market_segment'],
+            origin_country_id=booking_data.get('origin_country_id'),
+            confirmation_number=conf_no
+        )
+
+        total_amount = Decimal('0.00')
+        tax_amount = Decimal('0.00')
+
+        # Create Allocations and Snapshots
+        for alloc_item in booking_data.get('allocations', []):
+            unit_type = InventoryUnitType.objects.get(id=alloc_item['inventory_unit_type_id'], tenant=tenant)
+            
+            # Create Reservation Inventory Allocation
+            allocation = ReservationInventory.objects.create(
+                tenant=tenant,
+                reservation=reservation,
+                inventory_unit_type=unit_type,
+                check_in_date=alloc_item['check_in_date'],
+                check_out_date=alloc_item['check_out_date'],
+                adult_count=alloc_item.get('adult_count', 2),
+                child_count=alloc_item.get('child_count', 0),
+                infant_count=alloc_item.get('infant_count', 0),
+                status='RESERVED',
+                inventory_snapshot={
+                    'name': unit_type.name,
+                    'code': unit_type.code,
+                    'base_occupancy': unit_type.base_occupancy,
+                    'max_occupancy': unit_type.max_occupancy
+                }
+            )
+
+            # Link primary guest snapshot inside ReservationGuest
+            ReservationGuest.objects.create(
+                tenant=tenant,
+                reservation_inventory=allocation,
+                guest=primary_guest,
+                is_primary=True,
+                guest_snapshot={
+                    'first_name': primary_guest.first_name,
+                    'last_name': primary_guest.last_name,
+                    'email': primary_guest.contacts.filter(is_primary=True).first().email if primary_guest.contacts.filter(is_primary=True).exists() else None,
+                    'phone': primary_guest.contacts.filter(is_primary=True).first().phone if primary_guest.contacts.filter(is_primary=True).exists() else None,
+                }
+            )
+
+            # Create daily rate snapshots
+            rate_plan = RatePlan.objects.get(id=alloc_item['rate_plan_id'], tenant=tenant)
+            for rate_day in alloc_item.get('nightly_rates', []):
+                rate_version = RatePlanVersion.objects.get(id=rate_day['rate_plan_version_id'], rate_plan=rate_plan)
+                amount = Decimal(str(rate_day['amount']))
+                
+                # Setup simple rate/policy snapshot representation
+                rate_snapshot = {
+                    'rate_plan_code': rate_plan.code,
+                    'rate_plan_name': rate_plan.name,
+                    'version_number': rate_version.version_number,
+                    'amount': str(amount)
+                }
+                policy_snapshot = {
+                    'cancellation_policy_code': rate_plan.cancellation_policy.code if rate_plan.cancellation_policy else None,
+                    'free_cancellation_hours': rate_plan.cancellation_policy.free_cancellation_hours if rate_plan.cancellation_policy else 0
+                }
+
+                ReservationRateSnapshot.objects.create(
+                    tenant=tenant,
+                    reservation_inventory=allocation,
+                    date=rate_day['date'],
+                    rate_plan=rate_plan,
+                    rate_plan_version=rate_version,
+                    amount_charged=amount,
+                    rate_snapshot=rate_snapshot,
+                    policy_snapshot=policy_snapshot
+                )
+
+                total_amount += amount
+                tax_amount += amount * Decimal('0.10')  # 10% tax assumption for billing simulation
+
+        # Save financial updates on reservation header
+        reservation.total_amount = total_amount
+        reservation.tax_amount = tax_amount
+        reservation.balance_amount = total_amount + tax_amount
+        reservation.status = 'CONFIRMED'
+        reservation.save(update_fields=['total_amount', 'tax_amount', 'balance_amount', 'status'])
+
+        # Update Group Block pickup count
+        if group_block:
+            group_block.pickup_rooms = group_block.pickup_rooms + len(booking_data.get('allocations', []))
+            group_block.save(update_fields=['pickup_rooms'])
+
+        # Create Timeline event
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=reservation,
+            event_type='CREATED',
+            description=f"Reservation created with confirmation number {conf_no}.",
+            actor_user=user,
+            payload_diff=make_serializable(model_to_dict(reservation, exclude=['created_at', 'updated_at', 'deleted_at']))
+        )
+
+        return reservation
+
+
+class RoomAssignmentEngine:
+    @staticmethod
+    @transaction.atomic
+    def assign_room(tenant, allocation_id, room_id, user=None, upgrade_reason=None):
+        """
+        Assigns an InventoryUnit room to a ReservationInventory.
+        Supports upgrade verification: if target room type differs from the booked type, handles and logs room upgrades.
+        """
+        allocation = ReservationInventory.objects.get(id=allocation_id, tenant=tenant)
+        room = InventoryUnit.objects.get(id=room_id, tenant=tenant)
+
+        # Check occupancy compatibility or status
+        if room.operational_status != 'operational':
+            raise ValidationError(f"Room {room.name} is currently offline/under maintenance.")
+
+        upgrade_from = None
+        if room.inventory_unit_type != allocation.inventory_unit_type:
+            # Upgrade occurred
+            upgrade_from = allocation.inventory_unit_type
+            if not upgrade_reason:
+                raise ValidationError("Room type upgrade reason is required.")
+
+        allocation.inventory_unit = room
+        allocation.assigned_at = timezone.now()
+        allocation.assigned_by = user
+        allocation.status = 'ASSIGNED'
+        if upgrade_from:
+            allocation.upgrade_from_inventory_type = upgrade_from
+            allocation.upgrade_reason = upgrade_reason
+        allocation.save()
+
+        # Update operational statuses
+        room.housekeeping_status = 'dirty'  # Mark dirty upon guest assignment/prep
+        room.save(update_fields=['housekeeping_status'])
+
+        # Log timeline event
+        desc = f"Room {room.name} assigned to reservation allocation."
+        if upgrade_from:
+            desc += f" Upgraded from {upgrade_from.code} due to: {upgrade_reason}"
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=allocation.reservation,
+            event_type='ROOM_ASSIGNED',
+            description=desc,
+            actor_user=user,
+            payload_diff=make_serializable({
+                'allocation_id': str(allocation.id),
+                'room_id': str(room.id),
+                'room_name': room.name,
+                'upgraded': upgrade_from is not None,
+                'upgrade_from': str(upgrade_from.id) if upgrade_from else None
+            })
+        )
+
+        return allocation
+
+    @staticmethod
+    @transaction.atomic
+    def upgrade_room(tenant, allocation_id, new_inventory_type_id, upgrade_reason, user=None):
+        allocation = ReservationInventory.objects.get(id=allocation_id, tenant=tenant)
+        new_type = InventoryUnitType.objects.get(id=new_inventory_type_id, tenant=tenant)
+
+        old_type = allocation.inventory_unit_type
+        allocation.upgrade_from_inventory_type = old_type
+        allocation.inventory_unit_type = new_type
+        allocation.upgrade_reason = upgrade_reason
+        allocation.assigned_by = user
+        allocation.assigned_at = timezone.now()
+        allocation.save()
+
+        # Clear physical room assignment if it is no longer compatible
+        if allocation.inventory_unit and allocation.inventory_unit.inventory_unit_type != new_type:
+            allocation.inventory_unit = None
+            allocation.save(update_fields=['inventory_unit'])
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=allocation.reservation,
+            event_type='ROOM_UPGRADED',
+            description=f"Room type upgraded from {old_type.code} to {new_type.code}. Reason: {upgrade_reason}",
+            actor_user=user,
+            payload_diff=make_serializable({
+                'allocation_id': str(allocation.id),
+                'old_type_id': str(old_type.id),
+                'new_type_id': str(new_type.id),
+                'upgrade_reason': upgrade_reason
+            })
+        )
+        return allocation
+
+    @staticmethod
+    @transaction.atomic
+    def change_room(tenant, allocation_id, new_room_id, user=None):
+        allocation = ReservationInventory.objects.get(id=allocation_id, tenant=tenant)
+        new_room = InventoryUnit.objects.get(id=new_room_id, tenant=tenant)
+
+        if new_room.operational_status != 'operational':
+            raise ValidationError(f"Room {new_room.name} is currently offline/under maintenance.")
+
+        old_room_name = allocation.inventory_unit.name if allocation.inventory_unit else "Unassigned"
+        allocation.inventory_unit = new_room
+        allocation.assigned_by = user
+        allocation.assigned_at = timezone.now()
+        allocation.save()
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=allocation.reservation,
+            event_type='ROOM_CHANGED',
+            description=f"Room changed from {old_room_name} to {new_room.name}.",
+            actor_user=user,
+            payload_diff=make_serializable({
+                'allocation_id': str(allocation.id),
+                'old_room': old_room_name,
+                'new_room': new_room.name,
+                'new_room_id': str(new_room.id)
+            })
+        )
+        return allocation
+
+
+class CheckInCheckOutEngine:
+    @staticmethod
+    @transaction.atomic
+    def check_in(tenant, reservation_id, user=None):
+        """
+        Checks in all allocations and guest records linked to the reservation.
+        """
+        reservation = Reservation.objects.get(id=reservation_id, tenant=tenant)
+        if reservation.status not in ['CONFIRMED', 'PENDING']:
+            raise ValidationError("Reservation must be in CONFIRMED or PENDING state to check in.")
+
+        reservation.status = 'CHECKED_IN'
+        reservation.save(update_fields=['status'])
+
+        for alloc in reservation.room_allocations.all():
+            if not alloc.inventory_unit:
+                raise ValidationError("Cannot check in without assigning a physical room first.")
+            alloc.status = 'CHECKED_IN'
+            alloc.save(update_fields=['status'])
+
+            # Log check-in time for each guest mapping
+            for res_guest in alloc.guests.all():
+                res_guest.is_checked_in = True
+                res_guest.checked_in_at = timezone.now()
+                res_guest.save(update_fields=['is_checked_in', 'checked_in_at'])
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=reservation,
+            event_type='CHECKED_IN',
+            description="Reservation successfully checked in.",
+            actor_user=user
+        )
+        return reservation
+
+    @staticmethod
+    @transaction.atomic
+    def check_out(tenant, reservation_id, user=None):
+        """
+        Checks out the reservation and validates folio ledger balances.
+        """
+        reservation = Reservation.objects.get(id=reservation_id, tenant=tenant)
+        if reservation.status != 'CHECKED_IN':
+            raise ValidationError("Reservation must be checked in to execute check-out.")
+
+        # Check balance limit
+        if reservation.balance_amount > Decimal('0.00'):
+            raise ValidationError(f"Cannot checkout reservation with outstanding folio balance of {reservation.balance_amount}.")
+
+        reservation.status = 'CHECKED_OUT'
+        reservation.save(update_fields=['status'])
+
+        for alloc in reservation.room_allocations.all():
+            alloc.status = 'CHECKED_OUT'
+            alloc.save(update_fields=['status'])
+
+            # Log checkout time for each guest mapping
+            for res_guest in alloc.guests.all():
+                res_guest.checked_out_at = timezone.now()
+                res_guest.save(update_fields=['checked_out_at'])
+
+            # Clean housekeeping state on the room
+            if alloc.inventory_unit:
+                alloc.inventory_unit.housekeeping_status = 'dirty'
+                alloc.inventory_unit.save(update_fields=['housekeeping_status'])
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=reservation,
+            event_type='CHECKED_OUT',
+            description="Reservation successfully checked out.",
+            actor_user=user
+        )
+        return reservation
+
+
+class ReservationModificationEngine:
+    @staticmethod
+    @transaction.atomic
+    def modify_remarks(tenant, reservation_id, remarks, special_requests=None, user=None):
+        """
+        Modifies reservation notes, remarks, and special requests.
+        """
+        reservation = Reservation.objects.get(id=reservation_id, tenant=tenant)
+        old_data = {
+            'remarks': reservation.remarks,
+            'special_requests': reservation.special_requests
+        }
+        reservation.remarks = remarks
+        if special_requests is not None:
+            reservation.special_requests = special_requests
+        reservation.save(update_fields=['remarks', 'special_requests'])
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=reservation,
+            event_type='MODIFIED',
+            description="Remarks and special requests modified.",
+            actor_user=user,
+            payload_diff=make_serializable({
+                'before': old_data,
+                'after': {
+                    'remarks': reservation.remarks,
+                    'special_requests': reservation.special_requests
+                }
+            })
+        )
+        return reservation
+
+
+class ReservationCancellationEngine:
+    @staticmethod
+    @transaction.atomic
+    def cancel_reservation(tenant, reservation_id, cancellation_reason=None, user=None):
+        """
+        Cancels the reservation, cancels all allocations, releases group pickup rooms.
+        """
+        reservation = Reservation.objects.get(id=reservation_id, tenant=tenant)
+        if reservation.status in ['CHECKED_IN', 'CHECKED_OUT', 'CANCELLED']:
+            raise ValidationError("Cannot cancel a check-in, check-out, or already cancelled booking.")
+
+        reservation.status = 'CANCELLED'
+        reservation.save(update_fields=['status'])
+
+        for alloc in reservation.room_allocations.all():
+            alloc.status = 'CANCELLED'
+            alloc.save(update_fields=['status'])
+
+        # Adjust Group Block pickup counts if applicable
+        if reservation.group_block:
+            reservation.group_block.pickup_rooms = max(0, reservation.group_block.pickup_rooms - reservation.room_allocations.count())
+            reservation.group_block.save(update_fields=['pickup_rooms'])
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=reservation,
+            event_type='CANCELLED',
+            description=f"Reservation cancelled. Reason: {cancellation_reason or 'Not Specified'}",
+            actor_user=user,
+            payload_diff=make_serializable({'reason': cancellation_reason})
+        )
+        return reservation
+
+
+class ReservationSearchEngine:
+    @staticmethod
+    def search_reservations(tenant, search_query=None, status_filter=None, arrival_from=None, departure_to=None,
+                            confirmation=None, phone=None, guest=None, room=None, property_id=None):
+        """
+        Filters and searches reservations by status, date ranges, confirmation numbers, or guest names.
+        """
+        qs = Reservation.objects.filter(tenant=tenant)
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if arrival_from:
+            qs = qs.filter(arrival_date__gte=arrival_from)
+        if departure_to:
+            qs = qs.filter(departure_date__lte=departure_to)
+        
+        # Specific search fields
+        if confirmation:
+            qs = qs.filter(confirmation_number__iexact=confirmation)
+        if phone:
+            qs = qs.filter(primary_guest__phone__icontains=phone)
+        if guest:
+            qs = qs.filter(
+                models.Q(primary_guest__first_name__icontains=guest) |
+                models.Q(primary_guest__last_name__icontains=guest)
+            )
+        if room:
+            # Filter by room name or room id in allocations
+            qs = qs.filter(room_allocations__inventory_unit__name__iexact=room)
+
+        if search_query:
+            qs = qs.filter(
+                models.Q(confirmation_number__icontains=search_query) |
+                models.Q(primary_guest__first_name__icontains=search_query) |
+                models.Q(primary_guest__last_name__icontains=search_query) |
+                models.Q(booking_reference__icontains=search_query)
+            )
+        return qs.distinct().order_by('-created_at')
+
+
+class ReservationEnhancementEngine:
+    @staticmethod
+    @transaction.atomic
+    def reinstate_reservation(tenant, reservation_id, user=None):
+        reservation = Reservation.objects.get(id=reservation_id, tenant=tenant)
+        if reservation.status != 'CANCELLED':
+            raise ValidationError("Only cancelled reservations can be reinstated.")
+        
+        reservation.status = 'CONFIRMED'
+        reservation.save(update_fields=['status'])
+
+        for alloc in reservation.room_allocations.all():
+            alloc.status = 'RESERVED'
+            alloc.save(update_fields=['status'])
+
+        if reservation.group_block:
+            reservation.group_block.pickup_rooms = min(
+                reservation.group_block.total_rooms,
+                reservation.group_block.pickup_rooms + reservation.room_allocations.count()
+            )
+            reservation.group_block.save(update_fields=['pickup_rooms'])
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=reservation,
+            event_type='REINSTATED',
+            description="Reservation successfully reinstated from cancelled status.",
+            actor_user=user
+        )
+        return reservation
+
+    @staticmethod
+    @transaction.atomic
+    def split_reservation(tenant, reservation_id, allocation_ids, user=None):
+        parent = Reservation.objects.get(id=reservation_id, tenant=tenant)
+        all_allocs = parent.room_allocations.all()
+        if all_allocs.count() <= 1:
+            raise ValidationError("Only multi-room reservations can be split.")
+
+        # Create child reservation header
+        child_conf = BookingEngine.generate_confirmation_number()
+        
+        # Clone parent reservation
+        child = Reservation.objects.create(
+            tenant=tenant,
+            property=parent.property,
+            primary_guest=parent.primary_guest,
+            reservation_source=parent.reservation_source,
+            group_block=parent.group_block,
+            corporate_account=parent.corporate_account,
+            status=parent.status,
+            booking_date=timezone.now().date(),
+            arrival_date=parent.arrival_date,
+            departure_date=parent.departure_date,
+            total_amount=Decimal('0.00'),
+            tax_amount=Decimal('0.00'),
+            discount_amount=Decimal('0.00'),
+            paid_amount=Decimal('0.00'),
+            balance_amount=Decimal('0.00'),
+            booking_reference=parent.booking_reference,
+            notes=parent.notes,
+            confirmation_number=child_conf,
+            reservation_type=parent.reservation_type,
+            market_segment=parent.market_segment,
+            origin_country=parent.origin_country,
+            remarks=parent.remarks,
+            special_requests=parent.special_requests
+        )
+
+        total_split_amount = Decimal('0.00')
+
+        # Transfer selected allocations
+        for alloc_id in allocation_ids:
+            alloc = all_allocs.get(id=alloc_id)
+            alloc.reservation = child
+            alloc.save(update_fields=['reservation'])
+
+            # Recalculate amount from snapshots
+            from django.db.models import Sum
+            snapshots_total = alloc.rate_snapshots.aggregate(total=Sum('amount_charged'))['total'] or Decimal('0.00')
+            total_split_amount += snapshots_total
+
+        # Update parent and child total amounts
+        parent.total_amount = max(Decimal('0.00'), parent.total_amount - total_split_amount)
+        parent.balance_amount = max(Decimal('0.00'), parent.balance_amount - total_split_amount)
+        parent.save(update_fields=['total_amount', 'balance_amount'])
+
+        child.total_amount = total_split_amount
+        child.balance_amount = total_split_amount
+        child.save(update_fields=['total_amount', 'balance_amount'])
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=parent,
+            event_type='SPLIT_PARENT',
+            description=f"Reservation split. Child reservation confirmation: {child.confirmation_number}",
+            actor_user=user
+        )
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=child,
+            event_type='SPLIT_CHILD',
+            description=f"Reservation created via split from parent: {parent.confirmation_number}",
+            actor_user=user
+        )
+
+        return parent, child
+
+    @staticmethod
+    @transaction.atomic
+    def merge_reservations(tenant, primary_reservation_id, secondary_reservation_id, user=None):
+        primary = Reservation.objects.get(id=primary_reservation_id, tenant=tenant)
+        secondary = Reservation.objects.get(id=secondary_reservation_id, tenant=tenant)
+
+        if primary.property != secondary.property:
+            raise ValidationError("Reservations must belong to the same property to merge.")
+        if primary.primary_guest != secondary.primary_guest:
+            raise ValidationError("Reservations must belong to the same guest to merge.")
+
+        secondary_allocs = list(secondary.room_allocations.all())
+        secondary_total_amount = secondary.total_amount
+
+        for alloc in secondary_allocs:
+            alloc.reservation = primary
+            alloc.save(update_fields=['reservation'])
+
+        # Mark secondary as CANCELLED
+        secondary.status = 'CANCELLED'
+        secondary.save(update_fields=['status'])
+
+        # Update primary amounts
+        primary.total_amount += secondary_total_amount
+        primary.balance_amount += secondary_total_amount
+        primary.save(update_fields=['total_amount', 'balance_amount'])
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=primary,
+            event_type='MERGED',
+            description=f"Merged with reservation confirmation: {secondary.confirmation_number}",
+            actor_user=user
+        )
+
+        ReservationEvent.objects.create(
+            tenant=tenant,
+            reservation=secondary,
+            event_type='CANCELLED',
+            description=f"Reservation cancelled due to merge into: {primary.confirmation_number}",
+            actor_user=user
+        )
+
+        return primary
+

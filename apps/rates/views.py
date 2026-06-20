@@ -1,0 +1,231 @@
+from rest_framework import viewsets, status, permissions
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from django.utils.dateparse import parse_date
+from django.db.models import Q
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
+from datetime import datetime, date, timedelta
+
+from apps.rates.models import (
+    MealPlan, CancellationPolicy, ChildPolicy, RatePlan,
+    RatePlanInventoryType, RatePlanVersion, DerivedRateConfig,
+    RateRuleOccupancy, RateRuleDayOfWeek, RateCalendar,
+    PackageProduct, PackageProductRatePlan
+)
+from apps.rates.serializers import (
+    MealPlanSerializer, CancellationPolicySerializer, ChildPolicySerializer,
+    RatePlanSerializer, RatePlanInventoryTypeSerializer, RatePlanVersionSerializer,
+    DerivedRateConfigSerializer, RateRuleOccupancySerializer, RateRuleDayOfWeekSerializer,
+    RateCalendarSerializer, PackageProductSerializer, PackageProductRatePlanSerializer,
+    RebuildCalendarSerializer
+)
+from apps.rates.permissions import (
+    HasRatePermission, IsRateCalendarManager, IsPolicyManager, IsPackageManager
+)
+from apps.rates.services import RateCalendarService, RatePlanService
+
+class MealPlanViewSet(viewsets.ModelViewSet):
+    serializer_class = MealPlanSerializer
+    permission_classes = [IsPolicyManager]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return MealPlan.objects.filter(tenant__isnull=True)
+        return MealPlan.objects.filter(Q(tenant__isnull=True) | Q(tenant=tenant))
+
+
+class CancellationPolicyViewSet(viewsets.ModelViewSet):
+    serializer_class = CancellationPolicySerializer
+    permission_classes = [IsPolicyManager]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return CancellationPolicy.objects.none()
+        return CancellationPolicy.objects.filter(tenant=tenant)
+
+
+class ChildPolicyViewSet(viewsets.ModelViewSet):
+    serializer_class = ChildPolicySerializer
+    permission_classes = [IsPolicyManager]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return ChildPolicy.objects.none()
+        return ChildPolicy.objects.filter(tenant=tenant)
+
+
+class RatePlanViewSet(viewsets.ModelViewSet):
+    serializer_class = RatePlanSerializer
+    permission_classes = [HasRatePermission]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return RatePlan.objects.none()
+        qs = RatePlan.objects.filter(tenant=tenant)
+        property_id = self.request.query_params.get('property_id')
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        return qs
+
+    def perform_create(self, serializer):
+        rate_plan = serializer.save()
+        # Automatically generate version snapshot when created
+        RatePlanService.create_version_snapshot(rate_plan)
+
+
+class RatePlanInventoryTypeViewSet(viewsets.ModelViewSet):
+    serializer_class = RatePlanInventoryTypeSerializer
+    permission_classes = [HasRatePermission]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return RatePlanInventoryType.objects.none()
+        return RatePlanInventoryType.objects.filter(tenant=tenant)
+
+
+class RatePlanVersionViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = RatePlanVersionSerializer
+    permission_classes = [HasRatePermission]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return RatePlanVersion.objects.none()
+        rate_plan_id = self.request.query_params.get('rate_plan_id')
+        qs = RatePlanVersion.objects.filter(rate_plan__tenant=tenant)
+        if rate_plan_id:
+            qs = qs.filter(rate_plan_id=rate_plan_id)
+        return qs
+
+
+class DerivedRateConfigViewSet(viewsets.ModelViewSet):
+    serializer_class = DerivedRateConfigSerializer
+    permission_classes = [HasRatePermission]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return DerivedRateConfig.objects.none()
+        return DerivedRateConfig.objects.filter(tenant=tenant)
+
+
+class RateRuleOccupancyViewSet(viewsets.ModelViewSet):
+    serializer_class = RateRuleOccupancySerializer
+    permission_classes = [HasRatePermission]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return RateRuleOccupancy.objects.none()
+        return RateRuleOccupancy.objects.filter(tenant=tenant)
+
+
+class RateRuleDayOfWeekViewSet(viewsets.ModelViewSet):
+    serializer_class = RateRuleDayOfWeekSerializer
+    permission_classes = [HasRatePermission]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return RateRuleDayOfWeek.objects.none()
+        return RateRuleDayOfWeek.objects.filter(tenant=tenant)
+
+
+class RateCalendarViewSet(viewsets.ModelViewSet):
+    serializer_class = RateCalendarSerializer
+    permission_classes = [IsRateCalendarManager]
+
+    def get_queryset(self):
+        property_id = self.request.query_params.get('property_id')
+        qs = RateCalendar.objects.all()
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        return qs
+
+    @extend_schema(request=RebuildCalendarSerializer)
+    @action(detail=False, methods=['post'], url_path='rebuild')
+    def rebuild(self, request):
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return Response({'error': 'Tenant context missing.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = RebuildCalendarSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        property_id = serializer.validated_data['property_id']
+        start_date = serializer.validated_data['start_date']
+        end_date = serializer.validated_data['end_date']
+
+        count = RateCalendarService.rebuild_calendar(
+            tenant=tenant,
+            property_id=property_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        return Response({
+            'status': 'success',
+            'rebuilt_records': count
+        }, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('start_date', OpenApiTypes.DATE, required=False, description='Start date Filter'),
+            OpenApiParameter('end_date', OpenApiTypes.DATE, required=False, description='End date Filter'),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='property/(?P<property_id>[^/.]+)')
+    def property_calendar(self, request, property_id=None):
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return Response({'error': 'Tenant context missing.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        qs = RateCalendar.objects.filter(property_id=property_id)
+        
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+
+        if start_date_str:
+            start_date = parse_date(start_date_str)
+            if start_date:
+                qs = qs.filter(date__gte=start_date)
+
+        if end_date_str:
+            end_date = parse_date(end_date_str)
+            if end_date:
+                qs = qs.filter(date__lte=end_date)
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class PackageProductViewSet(viewsets.ModelViewSet):
+    serializer_class = PackageProductSerializer
+    permission_classes = [IsPackageManager]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return PackageProduct.objects.none()
+        return PackageProduct.objects.filter(tenant=tenant)
+
+
+class PackageProductRatePlanViewSet(viewsets.ModelViewSet):
+    serializer_class = PackageProductRatePlanSerializer
+    permission_classes = [IsPackageManager]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return PackageProductRatePlan.objects.none()
+        return PackageProductRatePlan.objects.filter(tenant=tenant)
