@@ -5,15 +5,15 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 # Import Views
-from apps.tenants.views import (
+from apps.core.tenants.views import (
     TenantViewSet, PropertyViewSet, TenantBrandingViewSet, TenantDomainViewSet,
     TenantConfigurationViewSet, TenantIsolationConfigViewSet
 )
-from apps.properties.views import (
+from apps.features.properties.views import (
     PropertyConfigurationViewSet, PropertyContactViewSet
 )
-from apps.rbac.views import RoleViewSet, PermissionViewSet, RolePermissionViewSet, UserPropertyRoleViewSet
-from apps.accounts.views import (
+from apps.core.rbac.views import RoleViewSet, PermissionViewSet, RolePermissionViewSet, UserPropertyRoleViewSet
+from apps.core.accounts.views import (
     UserViewSet, PasswordLoginView, RequestOTPView, 
     VerifyOTPView, LogoutView, CurrentUserView,
     ChangePasswordView, ForgotPasswordView, ResetPasswordView,
@@ -23,9 +23,9 @@ from apps.accounts.views import (
     LockUserView, UnlockUserView, MFAEnableView, MFADisableView, MFAVerifyView,
     SessionViewSet, SessionRevokeView, IPWhitelistViewSet, SSOConfigurationViewSet
 )
-from apps.audit.views import AuditLogViewSet
-from apps.inventory.views import BuildingViewSet, FloorViewSet, FloorPlanViewSet
-from apps.subscriptions.views import (
+from apps.core.audit.views import AuditLogViewSet
+from apps.features.inventory.views import BuildingViewSet, FloorViewSet, FloorPlanViewSet
+from apps.core.subscriptions.views import (
     ProductViewSet, ProductFeatureViewSet, LicenseViewSet,
     EntitlementViewSet, UsageViewSet
 )
@@ -74,37 +74,37 @@ urlpatterns = [
     path('api/', include(router.urls)),
     
     # Inventory Domain Endpoints
-    path('api/inventory/', include('apps.inventory.urls')),
+    path('api/inventory/', include('apps.features.inventory.urls')),
     
     # Availability Domain Endpoints
-    path('api/', include('apps.availability.urls')),
+    path('api/', include('apps.features.availability.urls')),
     
     # Rate Management Domain Endpoints
-    path('api/rates/', include('apps.rates.urls')),
+    path('api/rates/', include('apps.features.rates.urls')),
     
     # Guest CRM Domain Endpoints
-    path('api/crm/', include('apps.crm.urls')),
+    path('api/crm/', include('apps.features.crm.urls')),
     
     # Global Reference Data Endpoints
-    path('api/reference/', include('apps.reference.urls')),
+    path('api/reference/', include('apps.core.reference.urls')),
     
     # Reservation Domain Endpoints
-    path('api/reservations/', include('apps.reservations.urls')),
+    path('api/reservations/', include('apps.features.reservations.urls')),
 
     # Subscription & Entitlement Module Endpoints
-    path('api/subscriptions/', include('apps.subscriptions.urls')),
+    path('api/subscriptions/', include('apps.core.subscriptions.urls')),
 
     # Asset Management Endpoints
-    path('api/assets/', include('apps.assets.urls')),
+    path('api/assets/', include('apps.features.assets.urls')),
 
     # Maintenance Management Endpoints
-    path('api/maintenance/', include('apps.maintenance.urls')),
+    path('api/maintenance/', include('apps.features.maintenance.urls')),
 
     # Compliance & Governance Endpoints
-    path('api/compliance/', include('apps.compliance.urls')),
+    path('api/compliance/', include('apps.core.compliance.urls')),
 
     # Monitoring & Administration Endpoints
-    path('api/admin/', include('apps.monitoring.urls')),
+    path('api/admin/', include('apps.core.monitoring.urls')),
     
     # Custom Auth Endpoints
     path('api/auth/login/', PasswordLoginView.as_view(), name='password_login'),

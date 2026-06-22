@@ -40,23 +40,23 @@ INSTALLED_APPS = [
     'drf_spectacular',
     
     # Local apps
-    'apps.common',
-    'apps.tenants',
-    'apps.rbac',
-    'apps.accounts',
-    'apps.audit',
-    'apps.inventory',
-    'apps.availability',
-    'apps.rates',
-    'apps.crm',
-    'apps.reference',
-    'apps.reservations',
-    'apps.subscriptions',
-    'apps.assets',
-    'apps.maintenance',
-    'apps.compliance',
-    'apps.monitoring',
-    'apps.properties',
+    'apps.core.common',
+    'apps.core.tenants',
+    'apps.core.rbac',
+    'apps.core.accounts',
+    'apps.core.audit',
+    'apps.features.inventory',
+    'apps.features.availability',
+    'apps.features.rates',
+    'apps.features.crm',
+    'apps.core.reference',
+    'apps.features.reservations',
+    'apps.core.subscriptions',
+    'apps.features.assets',
+    'apps.features.maintenance',
+    'apps.core.compliance',
+    'apps.core.monitoring',
+    'apps.features.properties',
 ]
 
 MIDDLEWARE = [
@@ -70,11 +70,11 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     
     # Custom Middlewares
-    'apps.tenants.middleware.TenantResolutionMiddleware',
-    'apps.subscriptions.middleware.ProductAccessMiddleware',
-    'apps.accounts.middleware.AccountLockoutMiddleware',
-    'apps.accounts.middleware.IPWhitelistMiddleware',
-    'apps.audit.middleware.AuditMiddleware',
+    'apps.core.tenants.middleware.TenantResolutionMiddleware',
+    'apps.core.subscriptions.middleware.ProductAccessMiddleware',
+    'apps.core.accounts.middleware.AccountLockoutMiddleware',
+    'apps.core.accounts.middleware.IPWhitelistMiddleware',
+    'apps.core.audit.middleware.AuditMiddleware',
 ]
 
 ROOT_URLCONF = 'retrod_pms.urls'
