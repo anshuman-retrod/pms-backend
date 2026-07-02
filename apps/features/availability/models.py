@@ -38,10 +38,10 @@ class InventoryAvailability(BaseModel):
         verbose_name_plural = 'Inventory Availabilities'
         constraints = [
             models.UniqueConstraint(fields=['property', 'date', 'inventory_unit_type'], name='unique_property_date_unittype'),
-            models.CheckConstraint(check=models.Q(allocated_count__gte=0), name='allocated_count_non_negative'),
-            models.CheckConstraint(check=models.Q(sold_count__gte=0), name='sold_count_non_negative'),
-            models.CheckConstraint(check=models.Q(blocked_count__gte=0), name='blocked_count_non_negative'),
-            models.CheckConstraint(check=models.Q(overbooking_limit__gte=0), name='overbooking_limit_non_negative'),
+            models.CheckConstraint(condition=models.Q(allocated_count__gte=0), name='allocated_count_non_negative'),
+            models.CheckConstraint(condition=models.Q(sold_count__gte=0), name='sold_count_non_negative'),
+            models.CheckConstraint(condition=models.Q(blocked_count__gte=0), name='blocked_count_non_negative'),
+            models.CheckConstraint(condition=models.Q(overbooking_limit__gte=0), name='overbooking_limit_non_negative'),
         ]
         indexes = [
             models.Index(fields=['property', 'inventory_unit_type', 'date'], name='idx_prop_unittype_date'),
@@ -169,11 +169,11 @@ class GroupBlock(BaseModel):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(block_type__in=[c[0] for c in GROUP_BLOCK_TYPE_CHOICES]),
+                condition=models.Q(block_type__in=[c[0] for c in GROUP_BLOCK_TYPE_CHOICES]),
                 name='availability_group_block_type_check'
             ),
             models.CheckConstraint(
-                check=models.Q(status__in=[s[0] for s in GROUP_BLOCK_STATUS_CHOICES]),
+                condition=models.Q(status__in=[s[0] for s in GROUP_BLOCK_STATUS_CHOICES]),
                 name='availability_group_block_status_check'
             ),
             models.UniqueConstraint(fields=['property', 'code'], name='unique_property_availability_group_block_code')

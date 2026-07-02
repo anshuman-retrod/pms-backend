@@ -42,7 +42,7 @@ class CancellationPolicy(BaseModel):
         constraints = [
             models.UniqueConstraint(fields=['tenant', 'code'], name='unique_tenant_cancel_code'),
             models.CheckConstraint(
-                check=models.Q(penalty_type__in=['PERCENTAGE', 'NIGHTS', 'FLAT_AMOUNT']),
+                condition=models.Q(penalty_type__in=['PERCENTAGE', 'NIGHTS', 'FLAT_AMOUNT']),
                 name='cancellation_penalty_type_check'
             )
         ]
@@ -256,7 +256,7 @@ class RateRuleDayOfWeek(models.Model):
 
     class Meta:
         constraints = [
-            models.CheckConstraint(check=models.Q(day_of_week__range=(1, 7)), name='day_of_week_between_1_7'),
+            models.CheckConstraint(condition=models.Q(day_of_week__range=(1, 7)), name='day_of_week_between_1_7'),
         ]
 
     def clean(self):
@@ -329,7 +329,7 @@ class PackageProduct(BaseModel):
         constraints = [
             models.UniqueConstraint(fields=['tenant', 'code'], name='unique_tenant_package_code'),
             models.CheckConstraint(
-                check=models.Q(category__in=['SPA', 'TRANSFER', 'MEAL', 'ACTIVITY', 'SERVICE', 'OTHER']),
+                condition=models.Q(category__in=['SPA', 'TRANSFER', 'MEAL', 'ACTIVITY', 'SERVICE', 'OTHER']),
                 name='package_product_category_check'
             )
         ]

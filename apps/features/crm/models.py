@@ -53,11 +53,11 @@ class GuestProfile(BaseModel):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(guest_type__in=['DOMESTIC', 'FOREIGN', 'CORPORATE', 'VIP']),
+                condition=models.Q(guest_type__in=['DOMESTIC', 'FOREIGN', 'CORPORATE', 'VIP']),
                 name='guest_type_check'
             ),
             models.CheckConstraint(
-                check=models.Q(loyalty_tier__in=['PLATINUM', 'GOLD', 'SILVER', 'BRONZE', 'STANDARD']),
+                condition=models.Q(loyalty_tier__in=['PLATINUM', 'GOLD', 'SILVER', 'BRONZE', 'STANDARD']),
                 name='loyalty_tier_check'
             )
         ]
@@ -140,7 +140,7 @@ class GuestDocument(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(document_type__in=['PASSPORT', 'NATIONAL_ID', 'DRIVING_LICENCE']),
+                condition=models.Q(document_type__in=['PASSPORT', 'NATIONAL_ID', 'DRIVING_LICENCE']),
                 name='document_type_check'
             ),
             models.UniqueConstraint(fields=['guest', 'document_type'], name='unique_guest_document_type'),

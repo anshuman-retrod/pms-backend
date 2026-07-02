@@ -85,11 +85,11 @@ class Reservation(BaseModel):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(status__in=[s[0] for s in RESERVATION_STATUS_CHOICES]),
+                condition=models.Q(status__in=[s[0] for s in RESERVATION_STATUS_CHOICES]),
                 name='reservation_status_check'
             ),
             models.CheckConstraint(
-                check=models.Q(departure_date__gte=models.F('arrival_date')),
+                condition=models.Q(departure_date__gte=models.F('arrival_date')),
                 name='departure_after_arrival_check'
             ),
             models.UniqueConstraint(
@@ -142,11 +142,11 @@ class ReservationInventory(BaseModel):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(check_out_date__gt=models.F('check_in_date')),
+                condition=models.Q(check_out_date__gt=models.F('check_in_date')),
                 name='checkout_after_checkin_check'
             ),
             models.CheckConstraint(
-                check=models.Q(status__in=[s[0] for s in ALLOCATION_STATUS_CHOICES]),
+                condition=models.Q(status__in=[s[0] for s in ALLOCATION_STATUS_CHOICES]),
                 name='allocation_status_check'
             )
         ]
