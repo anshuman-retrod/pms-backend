@@ -85,7 +85,13 @@ router.register(r'superadmin-currencies', SystemCurrencyViewSet, basename='super
 router.register(r'superadmin-date-formats', SystemDateFormatViewSet, basename='superadmindateformats')
 router.register(r'superadmin-time-formats', SystemTimeFormatViewSet, basename='superadmintimeformats')
 
+from django.http import JsonResponse
+
+def home_status_view(request):
+    return JsonResponse({"status": "healthy", "service": "Retrod PMS API"})
+
 urlpatterns = [
+    path('', home_status_view, name='home_status'),
     path('admin/', admin.site.urls),
     
     # Base Viewsets
