@@ -339,8 +339,8 @@ class RequestOTPView(APIView):
         
         from django.conf import settings
         configured_provider = getattr(settings, 'OTP_PROVIDER', 'mock')
-        # Strictly enforce system-configured provider (email/sms) if set, otherwise fallback to request parameter
-        if configured_provider in ['email', 'sms']:
+        # Strictly enforce system-configured provider (email/sms/mock) if set, otherwise fallback to request parameter
+        if configured_provider in ['email', 'sms', 'mock']:
             provider_type = configured_provider
         else:
             provider_type = request.data.get('provider') or configured_provider
