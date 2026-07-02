@@ -8,17 +8,8 @@ from apps.features.inventory.models import InventoryUnit, InventoryUnitType
 from apps.features.rates.models import RatePlan, RatePlanVersion
 from django.conf import settings
 
-# Global Choices
-GROUP_BLOCK_TYPE_CHOICES = (
-    ('Corporate Booking', 'Corporate Booking'),
-    ('Wedding Block', 'Wedding Block'),
-    ('Conference Block', 'Conference Block'),
-    ('Tour Group', 'Tour Group'),
-)
-GROUP_BLOCK_STATUS_CHOICES = (
-    ('OPEN', 'Open'),
-    ('CLOSED', 'Closed'),
-    ('RELEASED', 'Released'),
+from apps.features.availability.models import (
+    GroupBlock, GROUP_BLOCK_TYPE_CHOICES, GROUP_BLOCK_STATUS_CHOICES
 )
 
 RESERVATION_STATUS_CHOICES = (
@@ -60,32 +51,7 @@ class CorporateAccount(BaseModel):
         return f"{self.company_name} ({self.negotiated_rate_code})"
 
 
-class GroupBlock(BaseModel):
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='group_blocks')
-    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='group_blocks')
-    block_type = models.CharField(max_length=32, choices=GROUP_BLOCK_TYPE_CHOICES)
-    name = models.CharField(max_length=120)
-    cutoff_date = models.DateField()
-    status = models.CharField(max_length=24, choices=GROUP_BLOCK_STATUS_CHOICES, default='OPEN')
-    total_rooms = models.IntegerField()
-    pickup_rooms = models.IntegerField(default=0)
-    released_rooms = models.IntegerField(default=0)
-    contracted_revenue = models.DecimalField(max_digits=12, decimal_places=2)
-
-    class Meta:
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(block_type__in=[c[0] for c in GROUP_BLOCK_TYPE_CHOICES]),
-                name='group_block_type_check'
-            ),
-            models.CheckConstraint(
-                check=models.Q(status__in=[s[0] for s in GROUP_BLOCK_STATUS_CHOICES]),
-                name='group_block_status_check'
-            )
-        ]
-
-    def __str__(self):
-        return f"{self.name} ({self.block_type}) - {self.status}"
+# GroupBlock is defined in and imported from apps.features.availability.models
 
 
 class Reservation(BaseModel):
@@ -131,6 +97,11 @@ class Reservation(BaseModel):
                 name='unique_property_booking_reference',
                 condition=models.Q(booking_reference__isnull=False)
             )
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'property', 'status']),
+            models.Index(fields=['tenant', 'arrival_date', 'departure_date']),
+            models.Index(fields=['deleted_at']),
         ]
 
     def __str__(self):
@@ -178,6 +149,12 @@ class ReservationInventory(BaseModel):
                 check=models.Q(status__in=[s[0] for s in ALLOCATION_STATUS_CHOICES]),
                 name='allocation_status_check'
             )
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'inventory_unit']),
+            models.Index(fields=['tenant', 'inventory_unit_type']),
+            models.Index(fields=['tenant', 'status']),
+            models.Index(fields=['check_in_date', 'check_out_date']),
         ]
 
     def __str__(self):

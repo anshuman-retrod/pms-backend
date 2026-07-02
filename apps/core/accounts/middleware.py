@@ -5,9 +5,23 @@ from apps.core.accounts.models import AccountLock, IPWhitelist
 
 class AccountLockoutMiddleware(MiddlewareMixin):
     def process_request(self, request):
+        user_id = None
         user = getattr(request, 'user', None)
         if user and user.is_authenticated:
-            lock = AccountLock.objects.filter(user=user, locked_until__gt=timezone.now()).first()
+            user_id = user.id
+        else:
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                try:
+                    token_str = auth_header.split(' ')[1]
+                    from rest_framework_simplejwt.tokens import AccessToken
+                    token = AccessToken(token_str)
+                    user_id = token.get('user_id')
+                except Exception:
+                    pass
+
+        if user_id:
+            lock = AccountLock.objects.filter(user_id=user_id, locked_until__gt=timezone.now()).first()
             if lock:
                 return JsonResponse({
                     'error': 'Account is temporarily locked.',

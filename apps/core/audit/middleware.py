@@ -75,12 +75,32 @@ class AuditMiddleware(MiddlewareMixin):
                 if upr:
                     actor_role = upr.role.code
         elif is_auth_endpoint:
-            # If we are resolving auth endpoints, try to get the contact name/email from the input body
-            try:
-                body_data = json.loads(request._audit_body) if request._audit_body else {}
-                actor_name = body_data.get('email_or_username') or body_data.get('email') or body_data.get('phone') or "Anonymous"
-            except Exception:
-                pass
+            resolved_from_response = False
+            if response.status_code == 200:
+                try:
+                    resp_data = getattr(response, 'data', None)
+                    if not resp_data and hasattr(response, 'content'):
+                        resp_data = json.loads(response.content.decode('utf-8'))
+                    if isinstance(resp_data, dict) and 'user' in resp_data:
+                        user_meta = resp_data['user']
+                        user_id = user_meta.get('id')
+                        if user_id:
+                            from apps.core.accounts.models import AppUser
+                            actor_user = AppUser.objects.filter(id=user_id).first()
+                            if actor_user:
+                                actor_name = actor_user.name
+                                actor_role = user_meta.get('role') or "Anonymous"
+                                resolved_from_response = True
+                except Exception:
+                    pass
+
+            if not resolved_from_response:
+                # If we are resolving auth endpoints, try to get the contact name/email from the input body
+                try:
+                    body_data = json.loads(request._audit_body) if request._audit_body else {}
+                    actor_name = body_data.get('email_or_username') or body_data.get('email') or body_data.get('phone') or "Anonymous"
+                except Exception:
+                    pass
 
         # Action Type and Targets Mapping
         action_type = f"{request.method} {path}"

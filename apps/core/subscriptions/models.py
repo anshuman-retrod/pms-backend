@@ -2,9 +2,9 @@ import uuid
 from django.db import models
 from django.conf import settings
 from apps.core.tenants.models import Tenant
+from apps.core.common.models import BaseModel
 
-class Product(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class Product(BaseModel):
     code = models.CharField(max_length=64, unique=True, db_index=True)
     name = models.CharField(max_length=120)
     description = models.TextField(null=True, blank=True)
@@ -73,8 +73,7 @@ class TenantSubscription(models.Model):
         return f"{self.tenant.name} - {self.plan.name} ({self.status})"
 
 
-class ProductFeature(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+class ProductFeature(BaseModel):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, null=True, blank=True, related_name='product_features')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='features')
     code = models.CharField(max_length=64, db_index=True)
@@ -168,4 +167,21 @@ class TenantProductUsage(models.Model):
 
     def __str__(self):
         return f"{self.tenant_product.tenant.name} - {self.metric_code}: {self.usage_value}/{self.usage_limit}"
+
+
+class SubscriptionRequest(BaseModel):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='subscription_requests')
+    product_name = models.CharField(max_length=120)
+    contact_name = models.CharField(max_length=120)
+    contact_email = models.EmailField()
+    comments = models.TextField(null=True, blank=True)
+    status = models.CharField(max_length=32, default='PENDING') # PENDING, APPROVED, REJECTED
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'subscription_request'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.tenant.name} - {self.product_name} ({self.status})"
 

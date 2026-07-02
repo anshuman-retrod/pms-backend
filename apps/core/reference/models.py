@@ -76,3 +76,15 @@ class ReservationSource(BaseModel):
 
     def __str__(self):
         return self.name
+
+class Timezone(BaseModel):
+    code = models.CharField(max_length=50, unique=True, db_index=True)
+    name = models.CharField(max_length=120)
+    utc_offset = models.CharField(max_length=10, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['code']
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"

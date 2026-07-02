@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from rest_framework.test import APITestCase
 from apps.core.tenants.models import Tenant, Property
+from apps.core.accounts.models import AppUser
 from apps.features.inventory.models import (
     InventoryUnitCategory, InventoryUnitType, InventoryUnit,
     InventoryRelationship, AttributeDefinition, InventoryUnitAttribute,
@@ -437,5 +438,48 @@ class InventoryCloneTests(APITestCase):
             'code': 'NEW_CODE'
         }, format='json')
         self.assertEqual(response.status_code, 403)
+
+
+class InventoryAnalyticsTests(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name='Analytics Tenant', subdomain='analytics', country='India', currency='INR', timezone='UTC'
+        )
+        self.property = Property.objects.create(
+            tenant=self.tenant, name='Hotel Analytics', address_line_1='Street', city='Goa',
+            state='Goa', country='India', postal_code='403001', contact_email='analytics@test.com',
+            contact_phone='+91', currency='INR', timezone='UTC'
+        )
+        self.user = AppUser.objects.create_user(
+            email='admin@analytics.com', password='Password123', tenant=self.tenant, name='Admin', username='analyticsadmin'
+        )
+        self.client.credentials(HTTP_X_TENANT_SUBDOMAIN='analytics')
+        self.client.force_authenticate(user=self.user)
+
+    def test_analytics_endpoints(self):
+        # 1. Summary
+        res = self.client.get('/api/inventory/analytics/summary/')
+        self.assertEqual(res.status_code, 200)
+        self.assertIn('total_categories', res.data)
+        
+        # 2. Availability
+        res = self.client.get('/api/inventory/analytics/availability/')
+        self.assertEqual(res.status_code, 200)
+        
+        # 3. Assets
+        res = self.client.get('/api/inventory/analytics/assets/')
+        self.assertEqual(res.status_code, 200)
+        
+        # 4. Maintenance
+        res = self.client.get('/api/inventory/analytics/maintenance/')
+        self.assertEqual(res.status_code, 200)
+        
+        # 5. Occupancy
+        res = self.client.get('/api/inventory/analytics/occupancy/')
+        self.assertEqual(res.status_code, 200)
+        
+        # 6. Reports
+        res = self.client.get('/api/inventory/analytics/reports/')
+        self.assertEqual(res.status_code, 200)
 
 

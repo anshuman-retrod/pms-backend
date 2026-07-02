@@ -7,7 +7,8 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 # Import Views
 from apps.core.tenants.views import (
     TenantViewSet, PropertyViewSet, TenantBrandingViewSet, TenantDomainViewSet,
-    TenantConfigurationViewSet, TenantIsolationConfigViewSet
+    TenantConfigurationViewSet, TenantIsolationConfigViewSet, SuperadminPropertyViewSet,
+    RequestSubscriptionView
 )
 from apps.features.properties.views import (
     PropertyConfigurationViewSet, PropertyContactViewSet
@@ -21,13 +22,20 @@ from apps.core.accounts.views import (
     UserAssignTenantView, UserAssignPropertyView, UserAssignmentsListView,
     PasswordPolicyViewSet, LoginAttemptViewSet, FailedLoginsListView,
     LockUserView, UnlockUserView, MFAEnableView, MFADisableView, MFAVerifyView,
-    SessionViewSet, SessionRevokeView, IPWhitelistViewSet, SSOConfigurationViewSet
+    SessionViewSet, SessionRevokeView, IPWhitelistViewSet, SSOConfigurationViewSet,
+    PlatformUserViewSet, DashboardStatsView, LogoutAllSessionsView, ConfirmLoginView,
+    CheckConfirmationStatusView
 )
 from apps.core.audit.views import AuditLogViewSet
 from apps.features.inventory.views import BuildingViewSet, FloorViewSet, FloorPlanViewSet
 from apps.core.subscriptions.views import (
     ProductViewSet, ProductFeatureViewSet, LicenseViewSet,
     EntitlementViewSet, UsageViewSet
+)
+from apps.core.common.views import (
+    SystemLanguageViewSet, SystemTaxViewSet,
+    SystemDocumentTypeViewSet, SystemFacilityViewSet, SystemCurrencyViewSet,
+    SystemDateFormatViewSet, SystemTimeFormatViewSet
 )
 
 # Initialize DRF Router
@@ -36,6 +44,8 @@ router = DefaultRouter()
 # Tenants & Properties
 router.register(r'tenants', TenantViewSet, basename='tenant')
 router.register(r'properties', PropertyViewSet, basename='property')
+router.register(r'superadmin-properties', SuperadminPropertyViewSet, basename='superadminproperty')
+
 router.register(r'tenant-branding', TenantBrandingViewSet, basename='tenantbranding')
 router.register(r'tenant-domains', TenantDomainViewSet, basename='tenantdomain')
 router.register(r'tenant-configurations', TenantConfigurationViewSet, basename='tenantconfiguration')
@@ -51,6 +61,7 @@ router.register(r'user-property-roles', UserPropertyRoleViewSet, basename='userp
 
 # Accounts
 router.register(r'users', UserViewSet, basename='user')
+router.register(r'superadmin-users', PlatformUserViewSet, basename='superadminuser')
 
 # Audit Logs
 router.register(r'audit-logs', AuditLogViewSet, basename='auditlog')
@@ -66,6 +77,13 @@ router.register(r'product-features', ProductFeatureViewSet, basename='main_produ
 router.register(r'licenses', LicenseViewSet, basename='main_license')
 router.register(r'entitlements', EntitlementViewSet, basename='main_entitlement')
 router.register(r'usage', UsageViewSet, basename='main_usage')
+router.register(r'superadmin-languages', SystemLanguageViewSet, basename='superadminlanguages')
+router.register(r'superadmin-taxes', SystemTaxViewSet, basename='superadmintaxes')
+router.register(r'superadmin-documents', SystemDocumentTypeViewSet, basename='superadmindocuments')
+router.register(r'superadmin-facilities', SystemFacilityViewSet, basename='superadminfacilities')
+router.register(r'superadmin-currencies', SystemCurrencyViewSet, basename='superadmincurrencies')
+router.register(r'superadmin-date-formats', SystemDateFormatViewSet, basename='superadmindateformats')
+router.register(r'superadmin-time-formats', SystemTimeFormatViewSet, basename='superadmintimeformats')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -87,7 +105,7 @@ urlpatterns = [
     
     # Global Reference Data Endpoints
     path('api/reference/', include('apps.core.reference.urls')),
-    
+
     # Reservation Domain Endpoints
     path('api/reservations/', include('apps.features.reservations.urls')),
 
@@ -100,16 +118,25 @@ urlpatterns = [
     # Maintenance Management Endpoints
     path('api/maintenance/', include('apps.features.maintenance.urls')),
 
+    # Linen Management Endpoints
+    path('api/linen/', include('apps.features.linen.urls')),
+
+    # Lost & Found Management Endpoints
+    path('api/lost-found/', include('apps.features.lost_found.urls')),
+
     # Compliance & Governance Endpoints
     path('api/compliance/', include('apps.core.compliance.urls')),
 
     # Monitoring & Administration Endpoints
     path('api/admin/', include('apps.core.monitoring.urls')),
+    path('api/dashboard-stats/', DashboardStatsView.as_view(), name='dashboard_stats'),
     
     # Custom Auth Endpoints
     path('api/auth/login/', PasswordLoginView.as_view(), name='password_login'),
     path('api/auth/request-otp/', RequestOTPView.as_view(), name='request_otp'),
     path('api/auth/verify-otp/', VerifyOTPView.as_view(), name='verify_otp'),
+    path('api/auth/confirm-login/', ConfirmLoginView.as_view(), name='confirm_login'),
+    path('api/auth/check-confirmation-status/', CheckConfirmationStatusView.as_view(), name='check_confirmation_status'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/logout/', LogoutView.as_view(), name='logout'),
     path('api/auth/me/', CurrentUserView.as_view(), name='current_user'),
@@ -138,14 +165,22 @@ urlpatterns = [
     path('api/security/mfa/verify/', MFAVerifyView.as_view(), name='mfa_verify'),
     path('api/security/sessions/', SessionViewSet.as_view({'get': 'list'}), name='sessions'),
     path('api/security/sessions/revoke/', SessionRevokeView.as_view(), name='session_revoke'),
+    path('api/security/sessions/logout-all/', LogoutAllSessionsView.as_view(), name='logout_all_sessions'),
     
     # IP Whitelisting & SSO Config
     path('api/security/ip-whitelist/', IPWhitelistViewSet.as_view({'get': 'list', 'post': 'create'}), name='ip_whitelist'),
     path('api/security/ip-whitelist/<uuid:pk>/', IPWhitelistViewSet.as_view({'delete': 'destroy'}), name='ip_whitelist_detail'),
     path('api/security/sso/', SSOConfigurationViewSet.as_view({'get': 'list', 'post': 'create'}), name='sso_list'),
     path('api/security/sso/<uuid:pk>/', SSOConfigurationViewSet.as_view({'put': 'update'}), name='sso_detail'),
+    path('api/tenant/request-subscription/', RequestSubscriptionView.as_view(), name='request_subscription'),
     
     # OpenAPI Schema & Swagger
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
+
+from django.conf import settings
+from django.conf.urls.static import static
+
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+

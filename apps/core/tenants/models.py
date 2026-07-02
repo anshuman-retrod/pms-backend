@@ -21,6 +21,7 @@ class Tenant(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey('accounts.AppUser', on_delete=models.SET_NULL, null=True, blank=True, related_name='created_tenants')
 
     def __str__(self):
         return f"{self.name} ({self.subdomain})"
@@ -51,6 +52,7 @@ class Property(BaseModel):
     
     currency = models.CharField(max_length=3)
     timezone = models.CharField(max_length=50)
+    image_url = models.URLField(max_length=500, null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -101,6 +103,7 @@ class TenantConfiguration(models.Model):
     date_format = models.CharField(max_length=32, default='YYYY-MM-DD')
     time_format = models.CharField(max_length=16, default='24H')
     enforce_ip_whitelist = models.BooleanField(default=False)
+    mfa_double_confirmation = models.BooleanField(default=True)
     configuration_json = models.JSONField(default=dict, blank=True)
 
     class Meta:

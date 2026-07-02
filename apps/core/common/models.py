@@ -53,3 +53,114 @@ class BaseModel(models.Model):
 
     def hard_delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
+
+
+class SystemTax(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='system_taxes')
+    name = models.CharField(max_length=120)
+    rate = models.DecimalField(max_digits=10, decimal_places=2)
+    type = models.CharField(max_length=32, default="percentage")  # percentage or fixed
+    status = models.CharField(max_length=32, default="active")  # active or inactive
+
+    class Meta:
+        db_table = 'system_taxes'
+
+    def __str__(self):
+        return f"{self.name} - {self.rate}%"
+
+
+class SystemDocumentType(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='system_document_types')
+    name = models.CharField(max_length=120)
+    required_checkin = models.BooleanField(default=False)
+    expiry_required = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'system_document_types'
+
+    def __str__(self):
+        return self.name
+
+
+class SystemFacility(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='system_facilities')
+    name = models.CharField(max_length=120)
+    chargeable = models.BooleanField(default=False)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    description = models.TextField(blank=True, default="")
+    icon_name = models.CharField(max_length=64, default="wifi")
+
+    class Meta:
+        db_table = 'system_facilities'
+
+    def __str__(self):
+        return self.name
+
+
+class SystemCurrency(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='system_currencies')
+    code = models.CharField(max_length=16)  # e.g., USD, INR
+    symbol = models.CharField(max_length=16)  # e.g., $, ₹
+    name = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+
+    # Format Settings
+    symbol_position = models.CharField(max_length=32, default="after")
+    decimal_places = models.IntegerField(default=2)
+    decimal_separator = models.CharField(max_length=8, default="dot")
+    thousands_separator = models.CharField(max_length=8, default="comma")
+    add_space = models.BooleanField(default=True)
+    show_decimals = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'system_currencies'
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
+class SystemDateFormat(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='system_date_formats')
+    format = models.CharField(max_length=64)  # e.g., YYYY-MM-DD
+    label = models.CharField(max_length=120)  # e.g., 2026-06-27
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'system_date_formats'
+
+    def __str__(self):
+        return self.label
+
+
+class SystemTimeFormat(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='system_time_formats')
+    format = models.CharField(max_length=64)  # e.g., HH:mm
+    label = models.CharField(max_length=120)  # e.g., 14:30
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'system_time_formats'
+
+    def __str__(self):
+        return self.label
+
+
+class SystemLanguage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=64, unique=True)
+    code = models.CharField(max_length=16, unique=True)
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'system_languages'
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"

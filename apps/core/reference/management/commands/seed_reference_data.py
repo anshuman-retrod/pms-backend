@@ -1,8 +1,8 @@
 from django.core.management.base import BaseCommand
-from apps.core.reference.models import Country, Nationality, Language, Currency, DocumentType, ReservationSource
+from apps.core.reference.models import Country, Nationality, Language, Currency, DocumentType, ReservationSource, Timezone
 
 class Command(BaseCommand):
-    help = 'Seeds Global Reference Data including ISO countries, currencies, languages, nationalities, document types, and reservation sources.'
+    help = 'Seeds Global Reference Data including ISO countries, currencies, languages, nationalities, document types, reservation sources, and timezones.'
 
     def handle(self, *args, **kwargs):
         self.stdout.write("Seeding global reference data...")
@@ -112,5 +112,24 @@ class Command(BaseCommand):
         for src in sources:
             ReservationSource.objects.update_or_create(code=src["code"], defaults=src)
         self.stdout.write(self.style.SUCCESS(f"Successfully seeded {len(sources)} reservation sources."))
+
+        # 7. Timezones
+        timezones = [
+            {"code": "UTC", "name": "UTC (Coordinated Universal Time)", "utc_offset": "+00:00"},
+            {"code": "America/New_York", "name": "Eastern Time (New York)", "utc_offset": "-05:00"},
+            {"code": "America/Chicago", "name": "Central Time (Chicago)", "utc_offset": "-06:00"},
+            {"code": "America/Denver", "name": "Mountain Time (Denver)", "utc_offset": "-07:00"},
+            {"code": "America/Los_Angeles", "name": "Pacific Time (Los Angeles)", "utc_offset": "-08:00"},
+            {"code": "Europe/London", "name": "Greenwich Mean Time (London)", "utc_offset": "+00:00"},
+            {"code": "Europe/Paris", "name": "Central European Time (Paris)", "utc_offset": "+01:00"},
+            {"code": "Asia/Kolkata", "name": "India Standard Time (Kolkata)", "utc_offset": "+05:30"},
+            {"code": "Asia/Singapore", "name": "Singapore Time", "utc_offset": "+08:00"},
+            {"code": "Asia/Tokyo", "name": "Japan Standard Time (Tokyo)", "utc_offset": "+09:00"},
+            {"code": "Australia/Sydney", "name": "Eastern Time (Sydney)", "utc_offset": "+10:00"},
+            {"code": "Pacific/Auckland", "name": "New Zealand Time (Auckland)", "utc_offset": "+12:00"},
+        ]
+        for tz in timezones:
+            Timezone.objects.update_or_create(code=tz["code"], defaults=tz)
+        self.stdout.write(self.style.SUCCESS(f"Successfully seeded {len(timezones)} timezones."))
 
         self.stdout.write(self.style.SUCCESS("Global reference data seeding completed!"))

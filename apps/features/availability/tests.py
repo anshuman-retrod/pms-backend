@@ -8,7 +8,13 @@ from django.core.exceptions import ValidationError
 
 from apps.core.tenants.models import Tenant, Property
 from apps.features.inventory.models import InventoryUnitCategory, InventoryUnitType, InventoryUnit
-from apps.features.availability.models import InventoryAvailability, InventoryRestriction, InventoryHold
+from apps.features.availability.models import (
+    InventoryAvailability, InventoryRestriction, InventoryHold,
+    GroupBlock, GroupBlockAllocation, Channel, ChannelAllocation,
+    DynamicAvailabilityRule, WaitlistEntry,
+    InventorySharedPool, InventorySharedPoolUnitType
+)
+from apps.features.crm.models import GuestProfile
 from apps.features.availability.services import (
     AvailabilityCalculationService,
     HoldService,
@@ -263,3 +269,156 @@ class AvailabilityDomainTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['available_count'], 7) # 10 - 3 = 7
+
+    def test_group_block_endpoints(self):
+        self.client.force_authenticate(user=self.user_t1)
+        
+        # 1. Create a Group Block
+        payload = {
+            "property": str(self.prop_t1.id),
+            "name": "wedding_block_2026",
+            "code": "WED-2026",
+            "contact_name": "John Doe",
+            "contact_email": "john@doe.com",
+            "contact_phone": "123456",
+            "start_date": "2026-07-01",
+            "end_date": "2026-07-10",
+            "release_date": "2026-06-30",
+            "status": "OPEN"
+        }
+        response = self.client.post('/api/group-blocks/', payload, format='json', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        block_id = response.data['id']
+        self.assertEqual(response.data['code'], "WED-2026")
+
+        # 2. List Group Blocks
+        response = self.client.get('/api/group-blocks/', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+        # 3. Create Group Block Allocation
+        alloc_payload = {
+            "group_block": block_id,
+            "inventory_unit_type": str(self.unit_type_t1.id),
+            "date": "2026-07-01",
+            "allocated_qty": 5,
+            "picked_up_qty": 1
+        }
+        response = self.client.post('/api/group-block-allocations/', alloc_payload, format='json', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['allocated_qty'], 5)
+
+        # 4. Release Group Block
+        response = self.client.post(f'/api/group-blocks/{block_id}/release/', {}, HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'RELEASED')
+
+    def test_channel_allocation_endpoints(self):
+        self.client.force_authenticate(user=self.user_t1)
+        
+        chan = Channel.objects.create(
+            tenant=self.tenant_1,
+            code="BOOKING_COM",
+            name="Booking.com"
+        )
+        
+        payload = {
+            "property": str(self.prop_t1.id),
+            "channel": str(chan.id),
+            "inventory_unit_type": str(self.unit_type_t1.id),
+            "date": "2026-07-01",
+            "allocated_qty": 10,
+            "sold_qty": 2
+        }
+        response = self.client.post('/api/channel-allocations/', payload, format='json', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['channel_code'], "BOOKING_COM")
+        self.assertEqual(response.data['remaining_qty'], 8)
+
+        response = self.client.get('/api/channel-allocations/', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_dynamic_rules_endpoints(self):
+        self.client.force_authenticate(user=self.user_t1)
+        
+        payload = {
+            "property": str(self.prop_t1.id),
+            "rule_type": "BLACKOUT",
+            "name": "Peak Season Blackout",
+            "start_date": "2026-12-24",
+            "end_date": "2026-12-31",
+            "is_active": True,
+            "priority": 5,
+            "evaluation_order": 1,
+            "rule_scope": "PROPERTY",
+            "parameters": {"stop_sell": True}
+        }
+        response = self.client.post('/api/rules/', payload, format='json', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['rule_type'], "BLACKOUT")
+        self.assertEqual(response.data['priority'], 5)
+
+        response = self.client.get('/api/rules/', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_waitlist_endpoints(self):
+        self.client.force_authenticate(user=self.user_t1)
+        
+        guest = GuestProfile.objects.create(
+            tenant=self.tenant_1,
+            first_name="Alice",
+            last_name="Smith",
+        )
+        
+        payload = {
+            "property": str(self.prop_t1.id),
+            "guest": str(guest.id),
+            "email_snapshot": "alice@test.com",
+            "phone_snapshot": "999999",
+            "inventory_unit_type": str(self.unit_type_t1.id),
+            "check_in_date": "2026-07-01",
+            "check_out_date": "2026-07-05",
+            "priority": 1,
+            "status": "PENDING"
+        }
+        response = self.client.post('/api/waitlist/', payload, format='json', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        entry_id = response.data['id']
+
+        response = self.client.get('/api/waitlist/', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+        response = self.client.post(f'/api/waitlist/{entry_id}/convert/', {}, HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'CONVERTED')
+        self.assertIsNotNone(response.data['converted_by'])
+        self.assertIsNotNone(response.data['converted_at'])
+
+    def test_shared_pools_endpoints(self):
+        self.client.force_authenticate(user=self.user_t1)
+        
+        pool_payload = {
+            "property": str(self.prop_t1.id),
+            "code": "POOL-A",
+            "name": "Standard Shared Pool",
+            "total_capacity": 10,
+            "allocation_strategy": "SHARED",
+            "effective_capacity": 10,
+            "reserved_capacity": 0,
+            "available_capacity": 10
+        }
+        response = self.client.post('/api/shared-pools/', pool_payload, format='json', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['allocation_strategy'], "SHARED")
+        pool_id = response.data['id']
+
+        unit_type_payload = {
+            "pool": pool_id,
+            "inventory_unit_type": str(self.unit_type_t1.id),
+            "weight": 1
+        }
+        response = self.client.post('/api/shared-pool-unit-types/', unit_type_payload, format='json', HTTP_X_PROPERTY_ID=str(self.prop_t1.id), HTTP_X_TENANT_SUBDOMAIN='t1')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)

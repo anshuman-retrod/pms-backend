@@ -87,6 +87,10 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
             ('tenant', 'email'),
             ('tenant', 'username'),
         )
+        indexes = [
+            models.Index(fields=['deleted_at']),
+            models.Index(fields=['tenant', 'is_active']),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.email})"
@@ -241,4 +245,21 @@ class SSOConfiguration(models.Model):
 
     def __str__(self):
         return f"SSO Provider ({self.provider}) for {self.tenant.name}"
+
+
+class PendingLoginConfirmation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name='pending_logins')
+    ip_address = models.CharField(max_length=45)
+    location = models.CharField(max_length=255, default="New Delhi, India")
+    device_spec = models.CharField(max_length=512)
+    status = models.CharField(max_length=32, default="pending")  # pending, approved, rejected
+    created_at = models.DateTimeField(auto_now_add=True)
+    tokens = models.JSONField(default=dict, blank=True)  # Stores the JWT tokens temporarily until confirmed
+
+    class Meta:
+        db_table = 'pending_login_confirmation'
+
+    def __str__(self):
+        return f"Pending login for {self.user.email} - Status: {self.status}"
 

@@ -1,9 +1,9 @@
 from django.db import models
 from rest_framework import viewsets, permissions
-from apps.core.reference.models import Country, Nationality, Language, Currency, DocumentType, ReservationSource
+from apps.core.reference.models import Country, Nationality, Language, Currency, DocumentType, ReservationSource, Timezone
 from apps.core.reference.serializers import (
     CountrySerializer, NationalitySerializer, LanguageSerializer,
-    CurrencySerializer, DocumentTypeSerializer, ReservationSourceSerializer
+    CurrencySerializer, DocumentTypeSerializer, ReservationSourceSerializer, TimezoneSerializer
 )
 from apps.core.reference.permissions import IsSuperUserOrReadOnly
 
@@ -98,6 +98,23 @@ class ReservationSourceViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = ReservationSource.objects.all()
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                models.Q(name__icontains=search) | models.Q(code__icontains=search)
+            )
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() in ['true', '1'])
+        return queryset
+
+
+class TimezoneViewSet(viewsets.ModelViewSet):
+    serializer_class = TimezoneSerializer
+    permission_classes = [IsSuperUserOrReadOnly]
+
+    def get_queryset(self):
+        queryset = Timezone.objects.all()
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(

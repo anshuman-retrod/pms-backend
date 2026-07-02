@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from apps.core.reference.models import Country, Nationality, Language, Currency, DocumentType, ReservationSource
+from apps.core.reference.models import Country, Nationality, Language, Currency, DocumentType, ReservationSource, Timezone
 
 class CountrySerializer(serializers.ModelSerializer):
     class Meta:
@@ -34,4 +34,10 @@ class DocumentTypeSerializer(serializers.ModelSerializer):
 class ReservationSourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReservationSource
+        fields = '__all__'
+
+
+class TimezoneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Timezone
         fields = '__all__'

@@ -15,13 +15,29 @@ from apps.core.subscriptions.serializers import (
     SubscriptionEntitlementSerializer, TenantSubscriptionSerializer,
     SubscriptionActionSerializer, ProductFeatureSerializer,
     TenantProductSerializer, TenantProductLicenseSerializer,
-    TenantProductEntitlementSerializer, TenantProductUsageSerializer
+    TenantProductEntitlementSerializer, TenantProductUsageSerializer,
+    SuperadminTenantSubscriptionSerializer
 )
 from apps.core.subscriptions.permissions import IsSuperUserOrReadOnly
 from apps.core.subscriptions.services import (
     ProductAccessService, LicenseValidationService,
     EntitlementValidationService, UsageTrackingService
 )
+
+def sync_tenant_products(tenant, plan, start_date, end_date, subscription_id):
+    TenantProduct.objects.filter(tenant=tenant).update(status='SUSPENDED')
+    for pp in plan.plan_products.all():
+        TenantProduct.objects.update_or_create(
+            tenant=tenant,
+            product=pp.product,
+            defaults={
+                'tenant_subscription_id': subscription_id,
+                'activated_at': start_date,
+                'expires_at': end_date,
+                'status': 'ACTIVE'
+            }
+        )
+
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
@@ -126,7 +142,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         GET /api/products/tenant-products/
         """
-        tenant = getattr(request, 'tenant', None)
+        tenant = getattr(request.user, 'tenant', getattr(request, 'tenant', None))
         if not tenant:
             return Response({'error': 'Tenant context is missing.'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -139,7 +155,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         GET /api/products/my-products/
         """
-        tenant = getattr(request, 'tenant', None)
+        tenant = getattr(request.user, 'tenant', getattr(request, 'tenant', None))
         if not tenant:
             return Response({'error': 'Tenant context is missing.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -197,6 +213,7 @@ class SubscriptionAssignView(APIView):
             end_date=end,
             status='ACTIVE'
         )
+        sync_tenant_products(tenant, plan, start, end, sub.id)
 
         return Response(TenantSubscriptionSerializer(sub).data, status=status.HTTP_201_CREATED)
 
@@ -232,6 +249,7 @@ class SubscriptionUpgradeView(APIView):
             end_date=end,
             status='ACTIVE'
         )
+        sync_tenant_products(tenant, plan, start, end, sub.id)
 
         return Response(TenantSubscriptionSerializer(sub).data, status=status.HTTP_200_OK)
 
@@ -267,6 +285,7 @@ class SubscriptionDowngradeView(APIView):
             end_date=end,
             status='ACTIVE'
         )
+        sync_tenant_products(tenant, plan, start, end, sub.id)
 
         return Response(TenantSubscriptionSerializer(sub).data, status=status.HTTP_200_OK)
 
@@ -309,7 +328,7 @@ class ProductFeatureViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        tenant = getattr(self.request, 'tenant', None)
+        tenant = getattr(self.request.user, 'tenant', getattr(self.request, 'tenant', None))
         if tenant:
             return ProductFeature.objects.filter(tenant=tenant) | ProductFeature.objects.filter(tenant__isnull=True)
         return ProductFeature.objects.all()
@@ -482,4 +501,32 @@ class UsageViewSet(viewsets.ModelViewSet):
                 }
 
         return Response({'message': 'Recalculation completed successfully.', 'results': results}, status=status.HTTP_200_OK)
+
+
+class TenantSubscriptionViewSet(viewsets.ModelViewSet):
+    queryset = TenantSubscription.objects.all()
+    serializer_class = SuperadminTenantSubscriptionSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def get_queryset(self):
+        tenant_id = self.request.query_params.get('tenant_id')
+        if tenant_id:
+            return TenantSubscription.objects.filter(tenant_id=tenant_id)
+        return TenantSubscription.objects.all()
+
+    def perform_create(self, serializer):
+        tenant = serializer.validated_data['tenant']
+        plan = serializer.validated_data['plan']
+        start_date = serializer.validated_data.get('start_date') or timezone.now().date()
+        if not serializer.validated_data.get('end_date'):
+            duration = 365 if plan.billing_cycle.upper() == 'YEARLY' else 30
+            end_date = start_date + timezone.timedelta(days=duration)
+        else:
+            end_date = serializer.validated_data.get('end_date')
+        status = serializer.validated_data.get('status', 'ACTIVE')
+        if status == 'ACTIVE':
+            TenantSubscription.objects.filter(tenant=tenant, status='ACTIVE').update(status='CANCELLED')
+        sub = serializer.save(start_date=start_date, end_date=end_date)
+        if status == 'ACTIVE':
+            sync_tenant_products(tenant, plan, start_date, end_date, sub.id)
 

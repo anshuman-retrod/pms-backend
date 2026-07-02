@@ -3,12 +3,22 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.utils.dateparse import parse_date
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
-from apps.features.availability.models import InventoryAvailability, InventoryRestriction, InventoryHold
+from apps.features.availability.models import (
+    InventoryAvailability, InventoryRestriction, InventoryHold,
+    GroupBlock, GroupBlockAllocation, Channel, ChannelAllocation,
+    DynamicAvailabilityRule, WaitlistEntry,
+    InventorySharedPool, InventorySharedPoolUnitType
+)
 from apps.features.availability.serializers import (
     InventoryAvailabilitySerializer,
     InventoryRestrictionSerializer,
     InventoryHoldSerializer,
-    BulkAvailabilityUpdateSerializer
+    BulkAvailabilityUpdateSerializer,
+    GroupBlockSerializer, GroupBlockAllocationSerializer,
+    ChannelSerializer, ChannelAllocationSerializer,
+    DynamicAvailabilityRuleSerializer,
+    WaitlistEntrySerializer, InventorySharedPoolSerializer,
+    InventorySharedPoolUnitTypeSerializer
 )
 from apps.features.availability.permissions import HasAvailabilityPermission, IsRestrictionManager, IsHoldManager
 from apps.features.availability.services import (
@@ -40,7 +50,7 @@ class InventoryAvailabilityViewSet(viewsets.ModelViewSet):
         ]
     )
     @action(detail=False, methods=['get'], url_path='calendar')
-    def calendar(self, request):
+    def get_calendar(self, request):
         tenant = getattr(request, 'tenant', None)
         if not tenant:
             return Response({'error': 'Tenant context missing.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -51,13 +61,12 @@ class InventoryAvailabilityViewSet(viewsets.ModelViewSet):
         unit_type_id = request.query_params.get('inventory_unit_type_id')
 
         if not property_id or not start_date_str or not end_date_str:
-            return Response({'error': 'property_id, start_date, and end_date are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Missing required parameters: property_id, start_date, end_date.'}, status=status.HTTP_400_BAD_REQUEST)
 
         start_date = parse_date(start_date_str)
         end_date = parse_date(end_date_str)
-
         if not start_date or not end_date:
-            return Response({'error': 'Invalid date format.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
 
         calendar_data = AvailabilityCalendarService.get_calendar(
             tenant=tenant,
@@ -68,59 +77,38 @@ class InventoryAvailabilityViewSet(viewsets.ModelViewSet):
         )
         return Response(calendar_data, status=status.HTTP_200_OK)
 
-    @extend_schema(request=BulkAvailabilityUpdateSerializer)
     @action(detail=False, methods=['post'], url_path='bulk-update')
     def bulk_update(self, request):
+        serializer = BulkAvailabilityUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
         tenant = getattr(request, 'tenant', None)
         if not tenant:
             return Response({'error': 'Tenant context missing.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = BulkAvailabilityUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
         property_id = serializer.validated_data['property_id']
         updates = serializer.validated_data['updates']
 
         created_count = 0
-        updated_count = 0
-
-        for item in updates:
-            date = item['date']
-            unit_type_id = item['inventory_unit_type_id']
+        for update in updates:
+            date_val = update['date']
+            unit_type_id = update['inventory_unit_type_id']
             
-            # Find or create
-            avail, created = InventoryAvailability.objects.get_or_create(
+            avail_record, _ = InventoryAvailability.objects.update_or_create(
                 tenant=tenant,
                 property_id=property_id,
+                date=date_val,
                 inventory_unit_type_id=unit_type_id,
-                date=date,
                 defaults={
-                    'allocated_count': item.get('allocated_count', 0),
-                    'sold_count': item.get('sold_count', 0),
-                    'blocked_count': item.get('blocked_count', 0),
-                    'overbooking_limit': item.get('overbooking_limit', 0),
+                    'allocated_count': update.get('allocated_count', 0),
+                    'sold_count': update.get('sold_count', 0),
+                    'blocked_count': update.get('blocked_count', 0),
+                    'overbooking_limit': update.get('overbooking_limit', 0),
                 }
             )
+            created_count += 1
 
-            if not created:
-                if 'allocated_count' in item:
-                    avail.allocated_count = item['allocated_count']
-                if 'sold_count' in item:
-                    avail.sold_count = item['sold_count']
-                if 'blocked_count' in item:
-                    avail.blocked_count = item['blocked_count']
-                if 'overbooking_limit' in item:
-                    avail.overbooking_limit = item['overbooking_limit']
-                avail.save()
-                updated_count += 1
-            else:
-                created_count += 1
-
-        return Response({
-            'status': 'success',
-            'created_records': created_count,
-            'updated_records': updated_count
-        }, status=status.HTTP_200_OK)
+        return Response({'status': 'success', 'created_records': created_count}, status=status.HTTP_200_OK)
 
 
 class InventoryRestrictionViewSet(viewsets.ModelViewSet):
@@ -152,39 +140,148 @@ class InventoryHoldViewSet(viewsets.ModelViewSet):
             qs = qs.filter(property_id=property_id)
         return qs
 
-    @action(detail=True, methods=['patch'], url_path='release')
-    def release(self, request, pk=None):
+    @action(detail=True, methods=['post'], url_path='release')
+    def release_hold(self, request, pk=None):
         hold = self.get_object()
-        HoldService.release_hold(hold)
-        serializer = self.get_serializer(hold)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        updated_hold = HoldService.release_hold(hold)
+        return Response(InventoryHoldSerializer(updated_hold).data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['patch'], url_path='convert')
-    def convert(self, request, pk=None):
+    @action(detail=True, methods=['post'], url_path='convert')
+    def convert_hold(self, request, pk=None):
         hold = self.get_object()
-        HoldService.convert_hold(hold)
-        serializer = self.get_serializer(hold)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        updated_hold = HoldService.convert_hold(hold)
+        return Response(InventoryHoldSerializer(updated_hold).data, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=['get'], url_path='active')
-    def active(self, request):
-        tenant = getattr(request, 'tenant', None)
+    @action(detail=False, methods=['post'], url_path='expire-all')
+    def expire_holds(self, request):
+        expired_count = HoldService.expire_holds()
+        return Response({'status': 'success', 'expired_count': expired_count}, status=status.HTTP_200_OK)
+
+
+class GroupBlockViewSet(viewsets.ModelViewSet):
+    serializer_class = GroupBlockSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
         if not tenant:
-            return Response({'error': 'Tenant context missing.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        qs = InventoryHold.objects.filter(
-            tenant=tenant,
-            status='ACTIVE',
-            expires_at__gt=timezone.now()
-        )
-        property_id = request.query_params.get('property_id')
+            return GroupBlock.objects.none()
+        qs = GroupBlock.objects.filter(tenant=tenant)
+        property_id = self.request.query_params.get('property_id') or self.request.query_params.get('property')
         if property_id:
             qs = qs.filter(property_id=property_id)
+        return qs
 
-        page = self.paginate_queryset(qs)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+    @action(detail=True, methods=['post'], url_path='release')
+    def release_block(self, request, pk=None):
+        block = self.get_object()
+        block.status = 'RELEASED'
+        block.save()
+        return Response(GroupBlockSerializer(block).data, status=status.HTTP_200_OK)
 
-        serializer = self.get_serializer(qs, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class GroupBlockAllocationViewSet(viewsets.ModelViewSet):
+    serializer_class = GroupBlockAllocationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return GroupBlockAllocation.objects.none()
+        return GroupBlockAllocation.objects.filter(group_block__tenant=tenant)
+
+
+class ChannelViewSet(viewsets.ModelViewSet):
+    serializer_class = ChannelSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return Channel.objects.none()
+        return Channel.objects.filter(tenant=tenant)
+
+
+class ChannelAllocationViewSet(viewsets.ModelViewSet):
+    serializer_class = ChannelAllocationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return ChannelAllocation.objects.none()
+        qs = ChannelAllocation.objects.filter(tenant=tenant)
+        property_id = self.request.query_params.get('property_id') or self.request.query_params.get('property')
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        return qs
+
+
+class DynamicAvailabilityRuleViewSet(viewsets.ModelViewSet):
+    serializer_class = DynamicAvailabilityRuleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return DynamicAvailabilityRule.objects.none()
+        qs = DynamicAvailabilityRule.objects.filter(tenant=tenant)
+        property_id = self.request.query_params.get('property_id') or self.request.query_params.get('property')
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        return qs
+
+
+class WaitlistEntryViewSet(viewsets.ModelViewSet):
+    serializer_class = WaitlistEntrySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return WaitlistEntry.objects.none()
+        qs = WaitlistEntry.objects.filter(tenant=tenant)
+        property_id = self.request.query_params.get('property_id') or self.request.query_params.get('property')
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='convert')
+    def convert_to_reservation(self, request, pk=None):
+        entry = self.get_object()
+        entry.status = 'CONVERTED'
+        entry.converted_by = request.user if request and request.user.is_authenticated else None
+        entry.converted_at = timezone.now()
+        
+        reservation_id = request.data.get('reservation_id')
+        if reservation_id:
+            entry.reservation_id = reservation_id
+            
+        entry.save()
+        return Response(WaitlistEntrySerializer(entry).data, status=status.HTTP_200_OK)
+
+
+class InventorySharedPoolViewSet(viewsets.ModelViewSet):
+    serializer_class = InventorySharedPoolSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return InventorySharedPool.objects.none()
+        qs = InventorySharedPool.objects.filter(tenant=tenant)
+        property_id = self.request.query_params.get('property_id') or self.request.query_params.get('property')
+        if property_id:
+            qs = qs.filter(property_id=property_id)
+        return qs
+
+
+class InventorySharedPoolUnitTypeViewSet(viewsets.ModelViewSet):
+    serializer_class = InventorySharedPoolUnitTypeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return InventorySharedPoolUnitType.objects.none()
+        return InventorySharedPoolUnitType.objects.filter(pool__tenant=tenant)

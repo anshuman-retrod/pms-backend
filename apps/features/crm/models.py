@@ -61,6 +61,10 @@ class GuestProfile(BaseModel):
                 name='loyalty_tier_check'
             )
         ]
+        indexes = [
+            models.Index(fields=['tenant', 'last_name', 'first_name']),
+            models.Index(fields=['deleted_at']),
+        ]
 
     def clean(self):
         if self.loyalty_points < 0:
@@ -97,6 +101,10 @@ class GuestContact(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=['tenant', 'email', 'phone'], name='unique_tenant_email_phone'),
+        ]
+        indexes = [
+            models.Index(fields=['tenant', 'email']),
+            models.Index(fields=['tenant', 'phone']),
         ]
 
     def clean(self):

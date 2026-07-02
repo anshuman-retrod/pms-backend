@@ -10,7 +10,7 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        tenant = getattr(self.request, 'tenant', None)
+        tenant = getattr(self.request.user, 'tenant', getattr(self.request, 'tenant', None))
         if not tenant:
             return AuditLog.objects.none()
         return AuditLog.objects.filter(tenant=tenant).order_by('-timestamp')

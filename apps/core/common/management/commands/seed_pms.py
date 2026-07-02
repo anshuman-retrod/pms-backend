@@ -220,4 +220,42 @@ class Command(BaseCommand):
                     role=role
                 )
 
+        # Seed default languages, taxes, docs, facilities, currencies, and formats
+        from apps.core.common.models import (
+            SystemLanguage, SystemTax, SystemDocumentType,
+            SystemFacility, SystemCurrency, SystemDateFormat, SystemTimeFormat
+        )
+        
+        SystemLanguage.objects.get_or_create(code='en', defaults={'name': 'English', 'is_active': True, 'is_default': True})
+        SystemLanguage.objects.get_or_create(code='hi', defaults={'name': 'Hindi', 'is_active': True, 'is_default': False})
+        SystemLanguage.objects.get_or_create(code='fr', defaults={'name': 'French', 'is_active': False, 'is_default': False})
+
+        # Seed Taxes
+        SystemTax.objects.get_or_create(name="VAT (Value Added Tax)", defaults={'rate': 15.00, 'type': 'percentage', 'status': 'active', 'tenant': None})
+        SystemTax.objects.get_or_create(name="Service Tax", defaults={'rate': 5.00, 'type': 'percentage', 'status': 'active', 'tenant': None})
+        SystemTax.objects.get_or_create(name="Tourism Levy", defaults={'rate': 10.00, 'type': 'fixed', 'status': 'inactive', 'tenant': None})
+
+        # Seed Document Types
+        SystemDocumentType.objects.get_or_create(name="Passport", defaults={'required_checkin': True, 'expiry_required': True, 'tenant': None})
+        SystemDocumentType.objects.get_or_create(name="National ID Card", defaults={'required_checkin': True, 'expiry_required': False, 'tenant': None})
+        SystemDocumentType.objects.get_or_create(name="Driver's License", defaults={'required_checkin': False, 'expiry_required': True, 'tenant': None})
+
+        # Seed Facilities
+        SystemFacility.objects.get_or_create(name="High-Speed Wi-Fi", defaults={'chargeable': False, 'price': 0.00, 'description': 'Complimentary gigabit fiber connection in all rooms and public areas.', 'icon_name': 'wifi', 'tenant': None})
+        SystemFacility.objects.get_or_create(name="Swimming Pool", defaults={'chargeable': False, 'price': 0.00, 'description': 'Access to outdoor heated infinity swimming pool.', 'icon_name': 'pool', 'tenant': None})
+        SystemFacility.objects.get_or_create(name="Spa", defaults={'chargeable': True, 'price': 50.00, 'description': 'Full-service wellness treatments, massage therapy, and sauna.', 'icon_name': 'spa', 'tenant': None})
+
+        # Seed Currencies
+        SystemCurrency.objects.get_or_create(code="USD", defaults={'symbol': '$', 'name': 'US Dollar', 'is_active': True, 'is_default': True, 'tenant': None})
+        SystemCurrency.objects.get_or_create(code="INR", defaults={'symbol': '₹', 'name': 'Indian Rupee', 'is_active': True, 'is_default': False, 'tenant': None})
+        SystemCurrency.objects.get_or_create(code="EUR", defaults={'symbol': '€', 'name': 'Euro', 'is_active': True, 'is_default': False, 'tenant': None})
+
+        # Seed Date Formats
+        SystemDateFormat.objects.get_or_create(format="YYYY-MM-DD", defaults={'label': '2026-06-27', 'is_default': True, 'tenant': None})
+        SystemDateFormat.objects.get_or_create(format="DD/MM/YYYY", defaults={'label': '27/06/2026', 'is_default': False, 'tenant': None})
+
+        # Seed Time Formats
+        SystemTimeFormat.objects.get_or_create(format="HH:mm", defaults={'label': '14:30', 'is_default': True, 'tenant': None})
+        SystemTimeFormat.objects.get_or_create(format="hh:mm A", defaults={'label': '02:30 PM', 'is_default': False, 'tenant': None})
+
         self.stdout.write(self.style.SUCCESS("Retrod PMS Database successfully bootstrapped!"))

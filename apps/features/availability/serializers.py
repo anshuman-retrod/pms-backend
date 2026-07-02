@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from apps.features.availability.models import InventoryAvailability, InventoryRestriction, InventoryHold
+from apps.features.availability.models import (
+    InventoryAvailability, InventoryRestriction, InventoryHold,
+    GroupBlock, GroupBlockAllocation, Channel, ChannelAllocation,
+    DynamicAvailabilityRule, WaitlistEntry,
+    InventorySharedPool, InventorySharedPoolUnitType
+)
 from apps.features.inventory.models import InventoryUnitType, InventoryUnit
 
 class InventoryAvailabilitySerializer(serializers.ModelSerializer):
@@ -121,4 +126,220 @@ class InventoryHoldSerializer(serializers.ModelSerializer):
         tenant = getattr(request, 'tenant', None)
         validated_data['tenant'] = tenant
         validated_data['created_by'] = request.user if request and request.user.is_authenticated else None
+        return super().create(validated_data)
+
+
+class GroupBlockSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GroupBlock
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        prop = data.get('property')
+        if prop and prop.tenant != tenant:
+            raise ValidationError("Property must belong to the resolved tenant context.")
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        user = getattr(request, 'user', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = user
+        return super().create(validated_data)
+
+
+class GroupBlockAllocationSerializer(serializers.ModelSerializer):
+    group_block_code = serializers.CharField(source='group_block.code', read_only=True)
+    inventory_unit_type_code = serializers.CharField(source='inventory_unit_type.code', read_only=True)
+
+    class Meta:
+        model = GroupBlockAllocation
+        fields = '__all__'
+        read_only_fields = ('id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        
+        block = data.get('group_block')
+        if block and block.tenant != tenant:
+            raise ValidationError("Group block must belong to the resolved tenant context.")
+            
+        unit_type = data.get('inventory_unit_type')
+        if unit_type and unit_type.tenant != tenant:
+            raise ValidationError("Inventory unit type must belong to the resolved tenant context.")
+            
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        validated_data['created_by'] = user
+        return super().create(validated_data)
+
+
+class ChannelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Channel
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at')
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = request.user if request else None
+        return super().create(validated_data)
+
+
+class ChannelAllocationSerializer(serializers.ModelSerializer):
+    inventory_unit_type_code = serializers.CharField(source='inventory_unit_type.code', read_only=True)
+    channel_code = serializers.CharField(source='channel.code', read_only=True)
+    remaining_qty = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = ChannelAllocation
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        prop = data.get('property')
+        if prop and prop.tenant != tenant:
+            raise ValidationError("Property must belong to the resolved tenant context.")
+        
+        unit_type = data.get('inventory_unit_type')
+        if unit_type and unit_type.tenant != tenant:
+            raise ValidationError("Inventory unit type must belong to the resolved tenant context.")
+
+        channel = data.get('channel')
+        if channel and channel.tenant != tenant:
+            raise ValidationError("Channel must belong to the resolved tenant context.")
+            
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        user = getattr(request, 'user', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = user
+        return super().create(validated_data)
+
+
+class DynamicAvailabilityRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DynamicAvailabilityRule
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        prop = data.get('property')
+        if prop and prop.tenant != tenant:
+            raise ValidationError("Property must belong to the resolved tenant context.")
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        user = getattr(request, 'user', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = user
+        return super().create(validated_data)
+
+
+class WaitlistEntrySerializer(serializers.ModelSerializer):
+    inventory_unit_type_code = serializers.CharField(source='inventory_unit_type.code', read_only=True)
+    guest_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WaitlistEntry
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at', 'converted_at', 'converted_by', 'reservation')
+
+    def get_guest_name(self, obj):
+        if obj.guest:
+            return f"{obj.guest.first_name} {obj.guest.last_name}"
+        return "Unknown Guest"
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        prop = data.get('property')
+        if prop and prop.tenant != tenant:
+            raise ValidationError("Property must belong to the resolved tenant context.")
+        
+        unit_type = data.get('inventory_unit_type')
+        if unit_type and unit_type.tenant != tenant:
+            raise ValidationError("Inventory unit type must belong to the resolved tenant context.")
+
+        guest = data.get('guest')
+        if guest and guest.tenant != tenant:
+            raise ValidationError("Guest must belong to the resolved tenant context.")
+            
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        user = getattr(request, 'user', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = user
+        return super().create(validated_data)
+
+
+class InventorySharedPoolSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InventorySharedPool
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        prop = data.get('property')
+        if prop and prop.tenant != tenant:
+            raise ValidationError("Property must belong to the resolved tenant context.")
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        user = getattr(request, 'user', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = user
+        return super().create(validated_data)
+
+
+class InventorySharedPoolUnitTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InventorySharedPoolUnitType
+        fields = '__all__'
+        read_only_fields = ('id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'deleted_at')
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        
+        pool = data.get('pool')
+        if pool and pool.tenant != tenant:
+            raise ValidationError("Shared pool must belong to the resolved tenant context.")
+            
+        unit_type = data.get('inventory_unit_type')
+        if unit_type and unit_type.tenant != tenant:
+            raise ValidationError("Inventory unit type must belong to the resolved tenant context.")
+            
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        validated_data['created_by'] = user
         return super().create(validated_data)

@@ -57,6 +57,11 @@ INSTALLED_APPS = [
     'apps.core.compliance',
     'apps.core.monitoring',
     'apps.features.properties',
+    'apps.features.linen',
+    'apps.features.lost_found',
+    'apps.features.front_office',
+    'apps.features.housekeeping',
+    'apps.features.billing',
 ]
 
 MIDDLEWARE = [
@@ -112,6 +117,14 @@ else:
 # Custom Auth Model
 AUTH_USER_MODEL = 'accounts.AppUser'
 
+# Password hashing
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+]
+
 # Password validators
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -129,6 +142,9 @@ USE_TZ = True
 # Static files
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -156,6 +172,8 @@ CORS_ALLOW_HEADERS = [
 
 # Django REST Framework Settings
 REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'apps.core.common.pagination.OptionalPageNumberPagination',
+    'PAGE_SIZE': 20,
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
@@ -163,6 +181,14 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/minute',
+        'user': '1000/minute'
+    }
 }
 
 # JWT Token configuration
