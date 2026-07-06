@@ -74,6 +74,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
+        user = self.request.user
+        if not tenant and user and user.is_authenticated and getattr(user, 'tenant', None):
+            tenant = user.tenant
         if not tenant:
             return Property.objects.none()
         return Property.objects.filter(tenant=tenant)
