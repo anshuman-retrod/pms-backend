@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from apps.core.reference.models import Country, Nationality, Language, Currency, DocumentType, ReservationSource, Timezone
+from apps.core.reference.models import Country, Nationality, Language, Currency, DocumentType, ReservationSource, Timezone, State
 
 class Command(BaseCommand):
     help = 'Seeds Global Reference Data including ISO countries, currencies, languages, nationalities, document types, reservation sources, and timezones.'
@@ -132,4 +132,64 @@ class Command(BaseCommand):
             Timezone.objects.update_or_create(code=tz["code"], defaults=tz)
         self.stdout.write(self.style.SUCCESS(f"Successfully seeded {len(timezones)} timezones."))
 
+        # 8. States/Provinces for countries
+        states_data = {
+            "IN": [
+                {"code": "DL", "name": "Delhi"},
+                {"code": "MH", "name": "Maharashtra"},
+                {"code": "KA", "name": "Karnataka"},
+                {"code": "TN", "name": "Tamil Nadu"},
+                {"code": "UP", "name": "Uttar Pradesh"},
+                {"code": "WB", "name": "West Bengal"},
+                {"code": "GJ", "name": "Gujarat"},
+                {"code": "TS", "name": "Telangana"},
+                {"code": "KL", "name": "Kerala"},
+                {"code": "OD", "name": "Odisha"},
+            ],
+            "US": [
+                {"code": "CA", "name": "California"},
+                {"code": "TX", "name": "Texas"},
+                {"code": "NY", "name": "New York"},
+                {"code": "FL", "name": "Florida"},
+                {"code": "IL", "name": "Illinois"},
+                {"code": "WA", "name": "Washington"},
+                {"code": "MA", "name": "Massachusetts"},
+                {"code": "CO", "name": "Colorado"},
+            ],
+            "GB": [
+                {"code": "ENG", "name": "England"},
+                {"code": "SCT", "name": "Scotland"},
+                {"code": "WLS", "name": "Wales"},
+                {"code": "NIR", "name": "Northern Ireland"},
+            ],
+            "CA": [
+                {"code": "ON", "name": "Ontario"},
+                {"code": "QC", "name": "Quebec"},
+                {"code": "BC", "name": "British Columbia"},
+                {"code": "AB", "name": "Alberta"},
+            ],
+            "AU": [
+                {"code": "NSW", "name": "New South Wales"},
+                {"code": "VIC", "name": "Victoria"},
+                {"code": "QLD", "name": "Queensland"},
+                {"code": "WA", "name": "Western Australia"},
+            ]
+        }
+
+        state_count = 0
+        for country_code, states in states_data.items():
+            try:
+                country_obj = Country.objects.get(code=country_code)
+                for st in states:
+                    State.objects.update_or_create(
+                        country=country_obj,
+                        code=st["code"],
+                        defaults={"name": st["name"]}
+                    )
+                    state_count += 1
+            except Country.DoesNotExist:
+                pass
+        self.stdout.write(self.style.SUCCESS(f"Successfully seeded {state_count} states."))
+
         self.stdout.write(self.style.SUCCESS("Global reference data seeding completed!"))
+

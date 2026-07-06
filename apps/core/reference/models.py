@@ -88,3 +88,18 @@ class Timezone(BaseModel):
 
     def __str__(self):
         return f"{self.name} ({self.code})"
+
+
+class State(BaseModel):
+    country = models.ForeignKey(Country, on_delete=models.CASCADE, related_name='states')
+    code = models.CharField(max_length=10, db_index=True)
+    name = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('country', 'code')
+
+    def __str__(self):
+        return f"{self.name}, {self.country.name}"
+
