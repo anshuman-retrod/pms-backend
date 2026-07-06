@@ -489,6 +489,7 @@ class AuthService:
                 'preferred_language': user.preferred_language,
                 'preferred_timezone': user.preferred_timezone,
                 'role': user_role,
+                'tenant_subdomain': user.tenant.subdomain if user.tenant else None,
             },
             'permissions': list(permissions),
             'properties': properties

@@ -25,9 +25,24 @@ from apps.core.subscriptions.services import (
 )
 
 def sync_tenant_products(tenant, plan, start_date, end_date, subscription_id):
+    from apps.core.subscriptions.models import (
+        TenantProduct, TenantProductLicense, TenantProductEntitlement,
+        SubscriptionEntitlement, ProductFeature
+    )
+    from apps.core.accounts.models import AppUser
+    import uuid
+
+    # Suspend previous products
     TenantProduct.objects.filter(tenant=tenant).update(status='SUSPENDED')
+
+    # Clear old entitlements for the tenant products being synced
+    TenantProductEntitlement.objects.filter(tenant_product__tenant=tenant).delete()
+
+    superuser = AppUser.objects.filter(is_superuser=True).first()
+
+    # Activate plan products
     for pp in plan.plan_products.all():
-        TenantProduct.objects.update_or_create(
+        tp, created = TenantProduct.objects.update_or_create(
             tenant=tenant,
             product=pp.product,
             defaults={
@@ -36,6 +51,52 @@ def sync_tenant_products(tenant, plan, start_date, end_date, subscription_id):
                 'expires_at': end_date,
                 'status': 'ACTIVE'
             }
+        )
+
+        # Ensure a product license key exists
+        lic = TenantProductLicense.objects.filter(tenant_product=tp).first()
+        if not lic:
+            TenantProductLicense.objects.create(
+                tenant_product=tp,
+                status='ACTIVE',
+                license_key=f"LIC-{pp.product.code}-{uuid.uuid4().hex[:12].upper()}",
+                start_date=start_date,
+                end_date=end_date,
+                issued_by=superuser
+            )
+        elif lic.status != 'ACTIVE':
+            lic.status = 'ACTIVE'
+            lic.save()
+
+    # Sync entitlements from plan to TenantProductEntitlement
+    plan_entitlements = SubscriptionEntitlement.objects.filter(plan=plan)
+    for pe in plan_entitlements:
+        pf = ProductFeature.objects.filter(code=pe.feature_code).first()
+        if not pf:
+            continue
+
+        tp = TenantProduct.objects.filter(tenant=tenant, product=pf.product, status='ACTIVE').first()
+        if not tp:
+            continue
+
+        limit_val = pe.limit_value
+        limit_type = pe.limit_type
+
+        defaults = {
+            'product_feature': pf,
+            'limit_type': limit_type,
+        }
+        if limit_type == 'BOOLEAN':
+            defaults['limit_value_boolean'] = bool(limit_val)
+        elif limit_type == 'NUMERIC':
+            defaults['limit_value_numeric'] = int(limit_val) if limit_val is not None else None
+        elif limit_type == 'JSON':
+            defaults['limit_value_json'] = limit_val
+
+        TenantProductEntitlement.objects.update_or_create(
+            tenant_product=tp,
+            feature_code=pe.feature_code,
+            defaults=defaults
         )
 
 
@@ -146,7 +207,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         if not tenant:
             return Response({'error': 'Tenant context is missing.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        products = TenantProduct.objects.filter(tenant=tenant)
+        products = TenantProduct.objects.filter(tenant=tenant, status='ACTIVE')
         serializer = TenantProductSerializer(products, many=True)
         return Response(serializer.data)
 

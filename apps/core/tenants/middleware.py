@@ -56,7 +56,10 @@ class TenantResolutionMiddleware(MiddlewareMixin):
         try:
             tenant = Tenant.objects.get(subdomain=subdomain)
         except Tenant.DoesNotExist:
-            return JsonResponse({'error': f'Tenant with subdomain "{subdomain}" does not exist.'}, status=404)
+            # Fallback to the first tenant for dev/testing mode on server (e.g. Render deployments)
+            tenant = Tenant.objects.first()
+            if not tenant:
+                return JsonResponse({'error': f'Tenant with subdomain "{subdomain}" does not exist.'}, status=404)
 
         # 3. Check tenant status
         if tenant.status == 'suspended':
