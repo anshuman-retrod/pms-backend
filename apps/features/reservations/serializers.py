@@ -67,20 +67,31 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 
 class CreateBookingSerializer(serializers.Serializer):
-    primary_guest_id = serializers.UUIDField()
-    reservation_source_id = serializers.UUIDField()
+    primary_guest_id = serializers.UUIDField(required=False, allow_null=True)
+    reservation_source_id = serializers.UUIDField(required=False, allow_null=True)
     group_block_id = serializers.UUIDField(required=False, allow_null=True)
     corporate_account_id = serializers.UUIDField(required=False, allow_null=True)
-    reservation_type = serializers.CharField(max_length=32)
-    market_segment = serializers.CharField(max_length=32)
+    reservation_type = serializers.CharField(max_length=32, required=False, default="Individual")
+    market_segment = serializers.CharField(max_length=32, required=False, default="Direct")
     origin_country_id = serializers.UUIDField(required=False, allow_null=True)
     arrival_date = serializers.DateField()
     departure_date = serializers.DateField()
     booking_reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    special_requests = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    special_requests = serializers.ListField(child=serializers.CharField(), required=False, default=list)
     
+    # Inline Guest & Source Details
+    fullName = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    address = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    nationality = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    idType = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    idNumber = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    source = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    dynamicPricingPct = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     # Nested Allocations
     allocations = serializers.ListField(
         child=serializers.JSONField()

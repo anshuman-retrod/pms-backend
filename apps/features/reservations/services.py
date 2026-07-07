@@ -8,7 +8,7 @@ from apps.features.reservations.models import (
     CorporateAccount, GroupBlock, Reservation, ReservationInventory,
     ReservationRateSnapshot, ReservationGuest, ReservationEvent
 )
-from apps.features.crm.models import GuestProfile
+from apps.features.crm.models import GuestProfile, GuestContact, GuestDocument
 from apps.features.inventory.models import InventoryUnit, InventoryUnitType
 from apps.features.rates.models import RatePlan, RatePlanVersion
 
@@ -70,8 +70,68 @@ class BookingEngine:
             ]
         }
         """
-        primary_guest = GuestProfile.objects.get(id=booking_data['primary_guest_id'], tenant=tenant)
+        # Resolve Primary Guest (either lookup by UUID or create inline)
+        if booking_data.get('primary_guest_id'):
+            primary_guest = GuestProfile.objects.get(id=booking_data['primary_guest_id'], tenant=tenant)
+        else:
+            full_name = booking_data.get('fullName') or "Inline Guest"
+            email = booking_data.get('email') or ""
+            phone = booking_data.get('phone') or ""
+            address = booking_data.get('address') or ""
+            nationality = booking_data.get('nationality') or ""
+            id_type = booking_data.get('idType') or "PASSPORT"
+            id_number = booking_data.get('idNumber') or ""
+
+            parts = full_name.strip().split(' ', 1)
+            first_name = parts[0]
+            last_name = parts[1] if len(parts) > 1 else "Guest"
+
+            contact = GuestContact.objects.filter(tenant=tenant, email=email, phone=phone).first()
+            if contact:
+                primary_guest = contact.guest
+            else:
+                primary_guest = GuestProfile.objects.create(
+                    tenant=tenant,
+                    first_name=first_name,
+                    last_name=last_name,
+                    nationality=nationality,
+                    guest_type='DOMESTIC'
+                )
+                GuestContact.objects.create(
+                    tenant=tenant,
+                    guest=primary_guest,
+                    email=email,
+                    phone=phone,
+                    address_line_1=address,
+                    is_primary=True
+                )
+                if id_number:
+                    doc_type = 'PASSPORT'
+                    id_type_upper = id_type.upper()
+                    if 'ID' in id_type_upper or 'CARD' in id_type_upper or 'AADHAAR' in id_type_upper:
+                        doc_type = 'NATIONAL_ID'
+                    elif 'LICENSE' in id_type_upper or 'LICENCE' in id_type_upper or 'DRIVING' in id_type_upper:
+                        doc_type = 'DRIVING_LICENCE'
+
+                    GuestDocument.objects.create(
+                        tenant=tenant,
+                        guest=primary_guest,
+                        document_type=doc_type,
+                        document_number=id_number,
+                        is_verified=False
+                    )
         
+        # Resolve Reservation Source
+        res_source_id = booking_data.get('reservation_source_id')
+        if not res_source_id:
+            from apps.core.reference.models import ReservationSource
+            source_name = booking_data.get('source') or 'Direct'
+            source_obj = ReservationSource.objects.filter(tenant=tenant, name__iexact=source_name).first()
+            if not source_obj:
+                source_obj = ReservationSource.objects.filter(tenant=tenant).first()
+            if source_obj:
+                res_source_id = source_obj.id
+
         # Verify Corporate Account if provided
         corp_account = None
         if booking_data.get('corporate_account_id'):
@@ -86,13 +146,20 @@ class BookingEngine:
             if group_block.cutoff_date < timezone.now().date():
                 raise ValidationError("Group block cutoff date has passed.")
 
+        # Convert special requests list to a comma-separated string
+        spec_requests = booking_data.get('special_requests')
+        if isinstance(spec_requests, list):
+            spec_requests_str = ", ".join(spec_requests)
+        else:
+            spec_requests_str = spec_requests or ""
+
         # Create Reservation Header
         conf_no = cls.generate_confirmation_number()
         reservation = Reservation.objects.create(
             tenant=tenant,
             property=property_obj,
             primary_guest=primary_guest,
-            reservation_source_id=booking_data['reservation_source_id'],
+            reservation_source_id=res_source_id,
             group_block=group_block,
             corporate_account=corp_account,
             status='PENDING',
@@ -102,9 +169,9 @@ class BookingEngine:
             booking_reference=booking_data.get('booking_reference'),
             notes=booking_data.get('notes'),
             remarks=booking_data.get('remarks'),
-            special_requests=booking_data.get('special_requests'),
-            reservation_type=booking_data['reservation_type'],
-            market_segment=booking_data['market_segment'],
+            special_requests=spec_requests_str,
+            reservation_type=booking_data.get('reservation_type', 'Individual'),
+            market_segment=booking_data.get('market_segment', 'Direct'),
             origin_country_id=booking_data.get('origin_country_id'),
             confirmation_number=conf_no
         )
