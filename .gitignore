@@ -22,3 +22,7 @@ ENV/
 # Scratch files
 scratch/
 *.log
+
+# Media uploads & archives
+media/
+*.zip

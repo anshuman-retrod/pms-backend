@@ -3,7 +3,8 @@ from apps.features.rates.models import (
     MealPlan, CancellationPolicy, ChildPolicy, RatePlan,
     RatePlanInventoryType, RatePlanVersion, DerivedRateConfig,
     RateRuleOccupancy, RateRuleDayOfWeek, RateCalendar,
-    PackageProduct, PackageProductRatePlan
+    RateRuleOccupancy, RateRuleDayOfWeek, RateCalendar,
+    HospitalityPackage
 )
 
 @admin.register(MealPlan)
@@ -63,13 +64,8 @@ class RateCalendarAdmin(admin.ModelAdmin):
     list_filter = ('property', 'date', 'rate_plan', 'inventory_unit_type', 'is_available')
     date_hierarchy = 'date'
 
-@admin.register(PackageProduct)
-class PackageProductAdmin(admin.ModelAdmin):
-    list_display = ('code', 'name', 'category', 'default_price', 'tax_percent', 'is_active', 'tenant')
-    list_filter = ('category', 'is_active', 'tenant')
-    search_fields = ('code', 'name')
-
-@admin.register(PackageProductRatePlan)
-class PackageProductRatePlanAdmin(admin.ModelAdmin):
-    list_display = ('rate_plan', 'package_product', 'included_quantity', 'tenant')
-    list_filter = ('tenant',)
+@admin.register(HospitalityPackage)
+class HospitalityPackageAdmin(admin.ModelAdmin):
+    list_display = ('name', 'price', 'status', 'tenant')
+    list_filter = ('status', 'tenant')
+    search_fields = ('name', 'inclusions')

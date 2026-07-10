@@ -35,20 +35,39 @@ class HasInventoryPermission(permissions.BasePermission):
             return True
 
         perm_code = self.get_required_permission(request, view)
+        # Fallback permission mapping (inventory settings are part of overall system settings)
+        fallback_perm_code = 'settings.edit'
+        if perm_code == 'inventory.view':
+            fallback_perm_code = 'settings.view'
+
         tenant = getattr(request, 'tenant', None)
         if not tenant:
             return False
 
-        # Check for property ID in request context
-        property_id = request.headers.get('X-Property-ID') or request.query_params.get('property_id')
+        # Check for property ID in request context (prefer body payload for write actions)
+        property_id = None
+        if request.method in ['POST', 'PUT', 'PATCH'] and hasattr(request.data, 'get'):
+            property_id = request.data.get('property_id') or request.data.get('property')
+            
+        if not property_id:
+            property_id = request.headers.get('X-Property-ID') or request.query_params.get('property_id')
         if not property_id:
             property_id = view.kwargs.get('property_id')
+
+        log_msg = f"DEBUG: method={request.method}, path={request.path}, property_id={property_id}, perm_code={perm_code}, fallback_perm_code={fallback_perm_code}, user={request.user}\n"
+        with open('perm_debug.log', 'a') as f:
+            f.write(log_msg)
 
         # If no specific property ID context is given, allow list operations if authorized for ANY property under the tenant
         if not property_id:
             user_roles = UserPropertyRole.objects.filter(user=request.user, tenant=tenant)
+            with open('perm_debug.log', 'a') as f:
+                f.write(f"DEBUG: no property_id, user_roles count={user_roles.count()}\n")
             for ur in user_roles:
-                if ur.role.permissions.filter(permission__code=perm_code).exists():
+                has_perm = ur.role.permissions.filter(permission__code__in=[perm_code, fallback_perm_code]).exists()
+                with open('perm_debug.log', 'a') as f:
+                    f.write(f"DEBUG: role={ur.role.name}, has_perm={has_perm}\n")
+                if has_perm:
                     return True
             return False
 
@@ -59,10 +78,15 @@ class HasInventoryPermission(permissions.BasePermission):
             tenant=tenant
         ).first()
 
+        with open('perm_debug.log', 'a') as f:
+            f.write(f"DEBUG: user_property_role={user_property_role}\n")
         if not user_property_role:
             return False
 
-        return user_property_role.role.permissions.filter(permission__code=perm_code).exists()
+        has_perm = user_property_role.role.permissions.filter(permission__code__in=[perm_code, fallback_perm_code]).exists()
+        with open('perm_debug.log', 'a') as f:
+            f.write(f"DEBUG: has_perm={has_perm}\n")
+        return has_perm
 
 
 class IsAmenityManager(HasInventoryPermission):

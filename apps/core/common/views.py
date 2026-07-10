@@ -4,12 +4,14 @@ from rest_framework.views import APIView
 from django.db.models import Q
 from apps.core.common.models import (
     SystemLanguage, SystemTax, SystemDocumentType,
-    SystemFacility, SystemCurrency, SystemDateFormat, SystemTimeFormat
+    SystemCurrency, SystemDateFormat, SystemTimeFormat,
+    Department, Shift
 )
 from apps.core.common.serializers import (
     SystemLanguageSerializer, SystemTaxSerializer,
-    SystemDocumentTypeSerializer, SystemFacilitySerializer, SystemCurrencySerializer,
-    SystemDateFormatSerializer, SystemTimeFormatSerializer
+    SystemDocumentTypeSerializer, SystemCurrencySerializer,
+    SystemDateFormatSerializer, SystemTimeFormatSerializer,
+    DepartmentSerializer, ShiftSerializer
 )
 
 class SystemLanguageViewSet(viewsets.ModelViewSet):
@@ -68,10 +70,6 @@ class SystemDocumentTypeViewSet(TenantAwareSettingsViewSet):
     queryset = SystemDocumentType.objects.all()
 
 
-class SystemFacilityViewSet(TenantAwareSettingsViewSet):
-    serializer_class = SystemFacilitySerializer
-    queryset = SystemFacility.objects.all()
-
 
 class SystemCurrencyViewSet(TenantAwareSettingsViewSet):
     serializer_class = SystemCurrencySerializer
@@ -86,3 +84,13 @@ class SystemDateFormatViewSet(TenantAwareSettingsViewSet):
 class SystemTimeFormatViewSet(TenantAwareSettingsViewSet):
     serializer_class = SystemTimeFormatSerializer
     queryset = SystemTimeFormat.objects.all()
+
+
+class DepartmentViewSet(TenantAwareSettingsViewSet):
+    serializer_class = DepartmentSerializer
+    queryset = Department.objects.all()
+
+
+class ShiftViewSet(TenantAwareSettingsViewSet):
+    serializer_class = ShiftSerializer
+    queryset = Shift.objects.all()

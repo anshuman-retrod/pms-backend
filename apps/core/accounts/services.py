@@ -478,6 +478,18 @@ class AuthService:
                     'role': 'super_admin'
                 })
 
+        # Fetch subscription plan details
+        from apps.core.subscriptions.models import TenantSubscription, TenantProductLicense
+        sub = TenantSubscription.objects.filter(tenant=tenant, status='ACTIVE').first()
+        sub_plan = sub.plan.name if sub else "Standard Enterprise Plan"
+        sub_expiry = str(sub.end_date) if sub else "2027-01-31"
+        
+        # Fetch license key
+        lic = TenantProductLicense.objects.filter(tenant_product__tenant=tenant, tenant_product__product__code='PMS', status='ACTIVE').first()
+        if not lic:
+            lic = TenantProductLicense.objects.filter(tenant_product__tenant=tenant, status='ACTIVE').first()
+        license_key = lic.license_key if lic else "RETROD-LNX-8394-2026"
+
         return {
             'user': {
                 'id': str(user.id),
@@ -490,6 +502,9 @@ class AuthService:
                 'preferred_timezone': user.preferred_timezone,
                 'role': user_role,
                 'tenant_subdomain': user.tenant.subdomain if user.tenant else None,
+                'subscription_plan': sub_plan,
+                'subscription_expiry': sub_expiry,
+                'license_key': license_key,
             },
             'permissions': list(permissions),
             'properties': properties

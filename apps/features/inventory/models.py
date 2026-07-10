@@ -160,6 +160,10 @@ class Amenity(BaseModel):
     code = models.CharField(max_length=64)
     name = models.CharField(max_length=120)
     category = models.CharField(max_length=64)
+    chargeable = models.BooleanField(default=False)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    description = models.TextField(blank=True, default="")
+    icon_name = models.CharField(max_length=64, default="wifi")
 
     class Meta:
         verbose_name_plural = 'Amenities'

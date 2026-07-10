@@ -40,8 +40,10 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     username = models.CharField(max_length=64)
     email = models.EmailField(max_length=255, unique=True)
     phone = models.CharField(max_length=32, null=True, blank=True)
-    avatar_url = models.URLField(max_length=2048, null=True, blank=True)
-    
+    avatar_url = models.TextField(null=True, blank=True)
+    role = models.ForeignKey('rbac.Role', on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
+    department = models.ForeignKey('common.Department', on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
+    shift = models.ForeignKey('common.Shift', on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     preferred_language = models.CharField(max_length=10, default='en')
     preferred_timezone = models.CharField(max_length=50, default='UTC')
     is_active = models.BooleanField(default=True)

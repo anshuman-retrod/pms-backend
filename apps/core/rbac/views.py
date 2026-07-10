@@ -20,10 +20,18 @@ class RoleViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
+        user = self.request.user
+        is_super = getattr(user, 'is_superuser', False) or getattr(user, 'role', '') == 'SUPERADMIN'
+        
+        # Exclude superadmin and owner roles from regular tenant views
+        qs = Role.objects.all()
+        if not is_super:
+            qs = qs.exclude(code__in=['super_admin', 'owner'])
+            
         if not tenant:
-            return Role.objects.filter(tenant__isnull=True)
+            return qs.filter(tenant__isnull=True)
         # Return global roles + roles specific to this tenant
-        return Role.objects.filter(Q(tenant__isnull=True) | Q(tenant=tenant))
+        return qs.filter(Q(tenant__isnull=True) | Q(tenant=tenant))
 
     def perform_create(self, serializer):
         tenant = getattr(self.request, 'tenant', None)

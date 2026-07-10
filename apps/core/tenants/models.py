@@ -55,6 +55,31 @@ class Property(BaseModel):
     image_url = models.URLField(max_length=500, null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
+    # Detailed setup fields
+    description = models.TextField(null=True, blank=True)
+    star_rating = models.CharField(max_length=10, default="4")
+    website = models.URLField(max_length=255, null=True, blank=True)
+    check_in_time = models.CharField(max_length=10, default="14:00")
+    check_out_time = models.CharField(max_length=10, default="11:00")
+    min_age = models.IntegerField(default=18)
+    pets_allowed = models.CharField(max_length=10, default="No")
+    tax_id = models.CharField(max_length=50, null=True, blank=True)
+    google_map_url = models.TextField(null=True, blank=True)  # Accepts URL or full iframe embed code
+    cancellation_policy = models.TextField(null=True, blank=True)
+    refund_policy = models.TextField(null=True, blank=True)
+    house_rules = models.TextField(null=True, blank=True)
+    website_logo = models.TextField(null=True, blank=True)
+    kot_logo = models.TextField(null=True, blank=True)
+    photos = models.JSONField(default=list, blank=True)
+    
+    cgst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    vat = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    city_tax = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    service_charge = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    luxury_tax = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    
+    amenities = models.JSONField(default=list, blank=True)
+
     def __str__(self):
         return f"{self.name} - {self.tenant.name}"
 

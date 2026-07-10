@@ -10,23 +10,38 @@ from apps.features.rates.models import (
     MealPlan, CancellationPolicy, ChildPolicy, RatePlan,
     RatePlanInventoryType, RatePlanVersion, DerivedRateConfig,
     RateRuleOccupancy, RateRuleDayOfWeek, RateCalendar,
-    PackageProduct, PackageProductRatePlan
+    TenantMealPlanPrice, HospitalityPackage, ServiceCategory, Service, Coupon
 )
 from apps.features.rates.serializers import (
     MealPlanSerializer, CancellationPolicySerializer, ChildPolicySerializer,
     RatePlanSerializer, RatePlanInventoryTypeSerializer, RatePlanVersionSerializer,
     DerivedRateConfigSerializer, RateRuleOccupancySerializer, RateRuleDayOfWeekSerializer,
-    RateCalendarSerializer, PackageProductSerializer, PackageProductRatePlanSerializer,
-    RebuildCalendarSerializer
+    RateCalendarSerializer, TenantMealPlanPriceSerializer,
+    HospitalityPackageSerializer, RebuildCalendarSerializer, ServiceCategorySerializer, ServiceSerializer, CouponSerializer
 )
 from apps.features.rates.permissions import (
     HasRatePermission, IsRateCalendarManager, IsPolicyManager, IsPackageManager
 )
 from apps.features.rates.services import RateCalendarService, RatePlanService
 
+class TenantMealPlanPriceViewSet(viewsets.ModelViewSet):
+    serializer_class = TenantMealPlanPriceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return TenantMealPlanPrice.objects.none()
+        return TenantMealPlanPrice.objects.filter(tenant=tenant)
+
+
 class MealPlanViewSet(viewsets.ModelViewSet):
     serializer_class = MealPlanSerializer
-    permission_classes = [IsPolicyManager]
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        return [IsPolicyManager()]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
@@ -59,7 +74,11 @@ class ChildPolicyViewSet(viewsets.ModelViewSet):
 
 class RatePlanViewSet(viewsets.ModelViewSet):
     serializer_class = RatePlanSerializer
-    permission_classes = [HasRatePermission]
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        return [HasRatePermission()]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
@@ -79,7 +98,11 @@ class RatePlanViewSet(viewsets.ModelViewSet):
 
 class RatePlanInventoryTypeViewSet(viewsets.ModelViewSet):
     serializer_class = RatePlanInventoryTypeSerializer
-    permission_classes = [HasRatePermission]
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        return [HasRatePermission()]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
@@ -209,23 +232,46 @@ class RateCalendarViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class PackageProductViewSet(viewsets.ModelViewSet):
-    serializer_class = PackageProductSerializer
+class HospitalityPackageViewSet(viewsets.ModelViewSet):
+    serializer_class = HospitalityPackageSerializer
+    permission_classes = [IsPackageManager]
+    filterset_fields = ['status']
+    search_fields = ['name', 'inclusions']
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return HospitalityPackage.objects.none()
+        return HospitalityPackage.objects.filter(tenant=tenant)
+
+class ServiceCategoryViewSet(viewsets.ModelViewSet):
+    serializer_class = ServiceCategorySerializer
     permission_classes = [IsPackageManager]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         if not tenant:
-            return PackageProduct.objects.none()
-        return PackageProduct.objects.filter(tenant=tenant)
+            return ServiceCategory.objects.none()
+        return ServiceCategory.objects.filter(tenant=tenant)
 
-
-class PackageProductRatePlanViewSet(viewsets.ModelViewSet):
-    serializer_class = PackageProductRatePlanSerializer
+class ServiceViewSet(viewsets.ModelViewSet):
+    serializer_class = ServiceSerializer
     permission_classes = [IsPackageManager]
+    filterset_fields = ['category', 'status']
+    search_fields = ['name']
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         if not tenant:
-            return PackageProductRatePlan.objects.none()
-        return PackageProductRatePlan.objects.filter(tenant=tenant)
+            return Service.objects.none()
+        return Service.objects.filter(tenant=tenant)
+
+class CouponViewSet(viewsets.ModelViewSet):
+    serializer_class = CouponSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return Coupon.objects.none()
+        return Coupon.objects.filter(tenant=tenant)

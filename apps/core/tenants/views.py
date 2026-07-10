@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
 from apps.core.tenants.models import (
     Tenant, Property, TenantBranding, TenantDomain, 
     TenantConfiguration, TenantIsolationConfig
@@ -9,6 +9,8 @@ from apps.core.tenants.serializers import (
 )
 
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.response import Response
 
 class TenantViewSet(viewsets.ModelViewSet):
     """
@@ -100,6 +102,23 @@ class PropertyViewSet(viewsets.ModelViewSet):
         serializer.save(
             updated_by=self.request.user if self.request.user.is_authenticated else None
         )
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def upload_photo(self, request):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'No file was provided.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        from django.core.files.storage import default_storage
+        import os
+        import uuid
+        
+        ext = os.path.splitext(file_obj.name)[1]
+        unique_filename = f"properties/{uuid.uuid4()}{ext}"
+        saved_path = default_storage.save(unique_filename, file_obj)
+        file_url = request.build_absolute_uri(default_storage.url(saved_path))
+        
+        return Response({'url': file_url}, status=status.HTTP_201_CREATED)
 
 
 class TenantBrandingViewSet(viewsets.ModelViewSet):

@@ -4,10 +4,12 @@ from apps.features.rates.views import (
     MealPlanViewSet, CancellationPolicyViewSet, ChildPolicyViewSet,
     RatePlanViewSet, RatePlanInventoryTypeViewSet, RatePlanVersionViewSet,
     DerivedRateConfigViewSet, RateRuleOccupancyViewSet, RateRuleDayOfWeekViewSet,
-    RateCalendarViewSet, PackageProductViewSet, PackageProductRatePlanViewSet
+    RateCalendarViewSet, TenantMealPlanPriceViewSet,
+    HospitalityPackageViewSet, ServiceCategoryViewSet, ServiceViewSet, CouponViewSet
 )
 
 router = DefaultRouter()
+router.register(r'tenant-meal-plan-prices', TenantMealPlanPriceViewSet, basename='tenantmealplanprice')
 router.register(r'meal-plans', MealPlanViewSet, basename='mealplan')
 router.register(r'cancellation-policies', CancellationPolicyViewSet, basename='cancellationpolicy')
 router.register(r'child-policies', ChildPolicyViewSet, basename='childpolicy')
@@ -18,8 +20,10 @@ router.register(r'derived-rates', DerivedRateConfigViewSet, basename='derivedrat
 router.register(r'occupancy-rules', RateRuleOccupancyViewSet, basename='occupancyrule')
 router.register(r'day-rules', RateRuleDayOfWeekViewSet, basename='dayrule')
 router.register(r'calendar', RateCalendarViewSet, basename='ratecalendar')
-router.register(r'package-products', PackageProductViewSet, basename='packageproduct')
-router.register(r'package-product-rate-plans', PackageProductRatePlanViewSet, basename='packageproductrateplan')
+router.register(r'packages', HospitalityPackageViewSet, basename='hospitalitypackage')
+router.register(r'service-categories', ServiceCategoryViewSet, basename='servicecategory')
+router.register(r'services', ServiceViewSet, basename='service')
+router.register(r'coupons', CouponViewSet, basename='coupon')
 
 urlpatterns = [
     path('', include(router.urls)),

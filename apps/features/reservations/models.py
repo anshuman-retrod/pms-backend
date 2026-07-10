@@ -5,7 +5,7 @@ from apps.core.tenants.models import Tenant, Property
 from apps.features.crm.models import GuestProfile
 from apps.core.reference.models import Country, ReservationSource
 from apps.features.inventory.models import InventoryUnit, InventoryUnitType
-from apps.features.rates.models import RatePlan, RatePlanVersion
+from apps.features.rates.models import RatePlan, RatePlanVersion, Service, HospitalityPackage, Coupon
 from django.conf import settings
 
 from apps.features.availability.models import (
@@ -237,3 +237,32 @@ class ReservationEvent(BaseModel):
 
     def __str__(self):
         return f"{self.event_type} on {self.reservation.confirmation_number} at {self.timestamp}"
+
+
+class ReservationServiceAddon(BaseModel):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='reservation_services')
+    reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name='services')
+    service = models.ForeignKey(Service, on_delete=models.RESTRICT, related_name='reservations')
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    def __str__(self):
+        return f"{self.reservation.confirmation_number} -> {self.service.name}"
+
+
+class ReservationPackage(BaseModel):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='reservation_packages')
+    reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name='packages')
+    package = models.ForeignKey(HospitalityPackage, on_delete=models.RESTRICT, related_name='reservations')
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    def __str__(self):
+        return f"{self.reservation.confirmation_number} -> {self.package.name}"
+
+
+class ReservationCoupon(BaseModel):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='reservation_coupons')
+    reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name='coupons')
+    coupon = models.ForeignKey(Coupon, on_delete=models.RESTRICT, related_name='reservations')
+
+    def __str__(self):
+        return f"{self.reservation.confirmation_number} -> Coupon {self.coupon.code}"

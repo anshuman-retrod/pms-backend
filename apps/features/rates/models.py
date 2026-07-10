@@ -307,68 +307,128 @@ class RateCalendar(models.Model):
         return f"{self.rate_plan.code} - {self.inventory_unit_type.code} @ {self.date}: {self.amount}"
 
 
-class PackageProduct(BaseModel):
-    CATEGORY_CHOICES = (
-        ('SPA', 'Spa Treatment'),
-        ('TRANSFER', 'Airport or City Transfer'),
-        ('MEAL', 'Meal Add-on'),
-        ('ACTIVITY', 'Local Excursions & Activities'),
-        ('SERVICE', 'Hotel Service'),
-        ('OTHER', 'Other Services'),
+class HospitalityPackage(BaseModel):
+    STATUS_CHOICES = (
+        ('Active', 'Active'),
+        ('Draft', 'Draft'),
     )
 
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='package_products')
-    code = models.CharField(max_length=32)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='hospitality_packages')
     name = models.CharField(max_length=120)
-    category = models.CharField(max_length=32, choices=CATEGORY_CHOICES, default='SERVICE')
-    default_price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
-    tax_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    inclusions = models.CharField(max_length=255, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Active')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['tenant', 'name'], name='unique_tenant_package_name'),
+        ]
+
+    def clean(self):
+        if self.price < 0:
+            raise ValidationError("Price cannot be negative.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} - {self.price} ({self.status})"
+
+
+class TenantMealPlanPrice(BaseModel):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='tenant_meal_plan_prices')
+    meal_plan = models.ForeignKey(MealPlan, on_delete=models.CASCADE, related_name='tenant_prices')
+    inventory_unit_type = models.ForeignKey(InventoryUnitType, on_delete=models.CASCADE, related_name='meal_plan_prices')
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['tenant', 'meal_plan', 'inventory_unit_type'], name='unique_tenant_mealplan_roomtype'),
+        ]
+
+    def __str__(self):
+        return f"{self.tenant.name} - {self.meal_plan.name} - {self.inventory_unit_type.name}: {self.price}"
+
+
+class ServiceCategory(BaseModel):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='service_categories')
+    name = models.CharField(max_length=64)
+    description = models.TextField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['tenant', 'name'], name='unique_tenant_service_category_name'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class Service(BaseModel):
+    STATUS_CHOICES = (
+        ('Active', 'Active'),
+        ('Seasonal', 'Seasonal'),
+        ('Draft', 'Draft'),
+    )
+
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='services')
+    category = models.ForeignKey(ServiceCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='services')
+    name = models.CharField(max_length=120)
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default='Active')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['tenant', 'name'], name='unique_tenant_service_name'),
+        ]
+
+    def clean(self):
+        if self.price < 0:
+            raise ValidationError("Price cannot be negative.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} - {self.price} ({self.status})"
+
+
+class Coupon(BaseModel):
+    DISCOUNT_TYPE_CHOICES = (
+        ('FLAT', 'Flat Amount'),
+        ('PERCENTAGE', 'Percentage'),
+    )
+
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='coupons')
+    code = models.CharField(max_length=64)
+    discount_type = models.CharField(max_length=24, choices=DISCOUNT_TYPE_CHOICES, default='PERCENTAGE')
+    discount_value = models.DecimalField(max_digits=12, decimal_places=2)
+    valid_from = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+    max_uses = models.IntegerField(null=True, blank=True, help_text="Maximum total uses allowed")
+    current_uses = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['tenant', 'code'], name='unique_tenant_package_code'),
-            models.CheckConstraint(
-                condition=models.Q(category__in=['SPA', 'TRANSFER', 'MEAL', 'ACTIVITY', 'SERVICE', 'OTHER']),
-                name='package_product_category_check'
-            )
+            models.UniqueConstraint(fields=['tenant', 'code'], name='unique_tenant_coupon_code'),
         ]
 
     def clean(self):
-        if self.default_price < 0:
-            raise ValidationError("Default price cannot be negative.")
-        if self.tax_percent < 0:
-            raise ValidationError("Tax percent cannot be negative.")
+        if self.discount_value < 0:
+            raise ValidationError("Discount value cannot be negative.")
+        if self.discount_type == 'PERCENTAGE' and self.discount_value > 100:
+            raise ValidationError("Percentage discount cannot exceed 100.")
+        if self.valid_from and self.valid_until and self.valid_from > self.valid_until:
+            raise ValidationError("Valid from date must be before valid until date.")
 
     def save(self, *args, **kwargs):
+        # Enforce uppercase alphanumeric if we wanted, but let's just do uppercase
+        self.code = self.code.upper().strip()
         self.clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.name} ({self.code})"
-
-
-class PackageProductRatePlan(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='package_product_rate_plans')
-    rate_plan = models.ForeignKey(RatePlan, on_delete=models.CASCADE, related_name='packages')
-    package_product = models.ForeignKey(PackageProduct, on_delete=models.RESTRICT, related_name='rate_plans')
-    included_quantity = models.IntegerField(default=1)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=['rate_plan', 'package_product'], name='unique_rateplan_packageproduct'),
-        ]
-
-    def clean(self):
-        if self.rate_plan.tenant != self.tenant or self.package_product.tenant != self.tenant:
-            raise ValidationError("Both rate plan and package product must belong to the resolved tenant context.")
-        if self.included_quantity < 1:
-            raise ValidationError("Included quantity must be greater than or equal to 1.")
-
-    def save(self, *args, **kwargs):
-        self.clean()
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.rate_plan.code} includes {self.included_quantity} x {self.package_product.code}"
+        return f"{self.code} - {self.discount_value} {self.discount_type}"

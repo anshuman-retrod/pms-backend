@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from django.db import models
 from apps.features.inventory.models import (
     InventoryUnitCategory, InventoryUnitType, InventoryUnit,
     InventoryRelationship, AttributeDefinition, InventoryUnitAttribute,
@@ -26,10 +27,19 @@ class InventoryUnitCategorySerializer(serializers.ModelSerializer):
 
 
 class InventoryUnitTypeSerializer(serializers.ModelSerializer):
+    amenities = serializers.SerializerMethodField()
+    rooms_count = serializers.SerializerMethodField()
+
     class Meta:
         model = InventoryUnitType
         fields = '__all__'
         read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by')
+
+    def get_amenities(self, obj):
+        return list(obj.type_amenities.values_list('amenity__code', flat=True))
+
+    def get_rooms_count(self, obj):
+        return obj.inventory_units.count()
 
     def validate(self, data):
         request = self.context.get('request')
@@ -50,7 +60,41 @@ class InventoryUnitTypeSerializer(serializers.ModelSerializer):
         tenant = getattr(request, 'tenant', None)
         validated_data['tenant'] = tenant
         validated_data['created_by'] = request.user if request and request.user.is_authenticated else None
-        return super().create(validated_data)
+        
+        # Extract amenities from request data
+        amenities_data = request.data.get('amenities', [])
+        
+        instance = super().create(validated_data)
+        
+        # Save amenities
+        for code in amenities_data:
+            amenity = Amenity.objects.filter(models.Q(tenant=tenant) | models.Q(tenant__isnull=True), code=code).first()
+            if amenity:
+                InventoryUnitTypeAmenity.objects.get_or_create(
+                    tenant=tenant,
+                    inventory_unit_type=instance,
+                    amenity=amenity
+                )
+        return instance
+
+    def update(self, instance, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        
+        instance = super().update(instance, validated_data)
+        
+        if 'amenities' in request.data:
+            amenities_data = request.data.get('amenities', [])
+            InventoryUnitTypeAmenity.objects.filter(inventory_unit_type=instance).delete()
+            for code in amenities_data:
+                amenity = Amenity.objects.filter(models.Q(tenant=tenant) | models.Q(tenant__isnull=True), code=code).first()
+                if amenity:
+                    InventoryUnitTypeAmenity.objects.get_or_create(
+                        tenant=tenant,
+                        inventory_unit_type=instance,
+                        amenity=amenity
+                    )
+        return instance
 
 
 class InventoryUnitSerializer(serializers.ModelSerializer):

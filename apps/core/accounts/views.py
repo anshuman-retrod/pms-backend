@@ -272,15 +272,28 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         tenant = getattr(self.request, 'tenant', None)
-        serializer.save(
+        user = serializer.save(
             tenant=tenant,
             created_by=self.request.user if self.request.user.is_authenticated else None
         )
+        if tenant and user.role:
+            UserAssignment.objects.update_or_create(
+                user=user,
+                tenant=tenant,
+                defaults={'role': user.role}
+            )
 
     def perform_update(self, serializer):
-        serializer.save(
+        user = serializer.save(
             updated_by=self.request.user if self.request.user.is_authenticated else None
         )
+        tenant = getattr(self.request, 'tenant', None)
+        if tenant and user.role:
+            UserAssignment.objects.update_or_create(
+                user=user,
+                tenant=tenant,
+                defaults={'role': user.role}
+            )
 
 
 @extend_schema(request=PasswordLoginRequestSerializer, responses={200: dict})

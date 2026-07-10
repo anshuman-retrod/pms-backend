@@ -7,7 +7,7 @@ from apps.features.inventory.models import InventoryUnitType
 from apps.features.rates.models import (
     MealPlan, CancellationPolicy, ChildPolicy, RatePlan,
     RatePlanInventoryType, DerivedRateConfig, RateRuleOccupancy,
-    RateRuleDayOfWeek, PackageProduct, PackageProductRatePlan
+    RateRuleDayOfWeek, HospitalityPackage
 )
 from apps.features.rates.services import RateCalendarService, RatePlanService
 
@@ -88,21 +88,22 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f"Created child policy: {code}")
 
-        # 5. Seed Package Products
+        # 5. Seed Hospitality Packages
         packages = {}
         pkg_data = [
-            ('SPA_60M', 'Spa Relaxation 60 Mins', 'SPA', '2500.00', '18.0'),
-            ('CAB_AIRPORT', 'Airport Airport Cab', 'TRANSFER', '1500.00', '5.0'),
+            ('Honeymoon Escape', '85000.00', 'Suite, Dinner, Spa, Airport Transfer'),
+            ('Wellness Retreat', '42000.00', 'Deluxe, Yoga Session, Organic Breakfast'),
+            ('Family Fun', '38000.00', 'Twin Room, Kids Club Access, Lunch Included'),
         ]
-        for code, name, cat, price, tax in pkg_data:
-            pp, created = PackageProduct.objects.get_or_create(
+        for name, price, inclusions in pkg_data:
+            hp, created = HospitalityPackage.objects.get_or_create(
                 tenant=tenant_gp,
-                code=code,
-                defaults={'name': name, 'category': cat, 'default_price': Decimal(price), 'tax_percent': Decimal(tax)}
+                name=name,
+                defaults={'price': Decimal(price), 'inclusions': inclusions, 'status': 'Active'}
             )
-            packages[code] = pp
+            packages[name] = hp
             if created:
-                self.stdout.write(f"Created package product: {code}")
+                self.stdout.write(f"Created hospitality package: {name}")
 
         # 6. Seed Rate Plans per Property
         for prop in properties:
@@ -193,13 +194,7 @@ class Command(BaseCommand):
                             value=Decimal('10.00')
                         )
             
-            # Map packages to BAR
-            PackageProductRatePlan.objects.get_or_create(
-                tenant=tenant_gp,
-                rate_plan=bar_plan,
-                package_product=packages['CAB_AIRPORT'],
-                defaults={'included_quantity': 1}
-            )
+            # Removed PackageProductRatePlan mapping as it is no longer needed
 
             # Rebuild rate calendar for next 30 days
             today = date.today()

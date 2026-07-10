@@ -10,7 +10,8 @@ from apps.features.rates.models import (
     MealPlan, CancellationPolicy, ChildPolicy, RatePlan,
     RatePlanInventoryType, RatePlanVersion, DerivedRateConfig,
     RateRuleOccupancy, RateRuleDayOfWeek, RateCalendar,
-    PackageProduct, PackageProductRatePlan
+    RateRuleOccupancy, RateRuleDayOfWeek, RateCalendar,
+    HospitalityPackage
 )
 from apps.core.tenants.models import Tenant, Property
 from apps.features.inventory.models import InventoryUnitType
@@ -35,10 +36,10 @@ class ChildPolicyService:
         return ChildPolicy.objects.filter(tenant=tenant)
 
 
-class PackageProductService:
+class HospitalityPackageService:
     @staticmethod
-    def get_products(tenant):
-        return PackageProduct.objects.filter(tenant=tenant)
+    def get_packages(tenant):
+        return HospitalityPackage.objects.filter(tenant=tenant)
 
 
 class DerivedRateService:
@@ -79,15 +80,7 @@ class RatePlanService:
                 ]
             })
 
-        packages = PackageProductRatePlan.objects.filter(rate_plan=rate_plan)
-        packages_data = [
-            {
-                'package_product_id': str(pkg.package_product_id),
-                'code': pkg.package_product.code,
-                'included_quantity': pkg.included_quantity
-            } for pkg in packages
-        ]
-
+        packages_data = []
         derived_data = None
         if rate_plan.is_derived and hasattr(rate_plan, 'derived_config'):
             dc = rate_plan.derived_config

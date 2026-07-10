@@ -160,7 +160,11 @@ class SuperadminPropertySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'tenant', 'tenant_name', 'name', 'property_type',
             'address_line_1', 'address_line_2', 'city', 'state', 'country', 'postal_code',
-            'contact_email', 'contact_phone', 'currency', 'timezone', 'image_url', 'is_active'
+            'contact_email', 'contact_phone', 'currency', 'timezone', 'image_url', 'is_active',
+            'description', 'star_rating', 'website', 'check_in_time', 'check_out_time',
+            'min_age', 'pets_allowed', 'tax_id', 'google_map_url', 'cancellation_policy',
+            'refund_policy', 'house_rules', 'cgst', 'vat', 'city_tax', 'service_charge',
+            'luxury_tax', 'amenities', 'website_logo', 'kot_logo', 'photos'
         ]
 
 

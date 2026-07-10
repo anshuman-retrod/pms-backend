@@ -3,29 +3,21 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.features.lost_found.models import LostFoundItem
 from apps.features.lost_found.serializers import LostFoundItemSerializer
+from apps.features.lost_found.filters import LostFoundItemFilter
 from django.utils import timezone
 
 class LostFoundItemViewSet(viewsets.ModelViewSet):
     serializer_class = LostFoundItemSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filterset_class = LostFoundItemFilter
+    search_fields = ['reference_number', 'description', 'finder_name']
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         if not tenant:
             return LostFoundItem.objects.none()
             
-        property_id = self.request.query_params.get('property_id') or self.request.query_params.get('property')
-        item_type = self.request.query_params.get('item_type')
-        status_filter = self.request.query_params.get('status')
-        
-        qs = LostFoundItem.objects.filter(tenant=tenant)
-        if property_id:
-            qs = qs.filter(property_id=property_id)
-        if item_type:
-            qs = qs.filter(item_type=item_type)
-        if status_filter:
-            qs = qs.filter(status=status_filter)
-        return qs
+        return LostFoundItem.objects.filter(tenant=tenant)
 
     @action(detail=True, methods=['post'], url_path='claim')
     def claim_item(self, request, pk=None):

@@ -12,8 +12,9 @@ from apps.features.reservations.serializers import (
     CorporateAccountSerializer, GroupBlockSerializer, ReservationSerializer,
     ReservationEventSerializer, CreateBookingSerializer, AssignRoomSerializer,
     ModifyRemarksSerializer, CancelReservationSerializer,
+    ModifyRemarksSerializer, CancelReservationSerializer,
     SplitReservationSerializer, MergeReservationSerializer,
-    RoomUpgradeSerializer, RoomChangeSerializer
+    RoomUpgradeSerializer, RoomChangeSerializer, PriceEstimationSerializer
 )
 from apps.features.reservations.permissions import HasReservationPermission
 from apps.features.reservations.services import (
@@ -62,6 +63,24 @@ class ReservationViewSet(viewsets.ModelViewSet):
         if not tenant:
             return Reservation.objects.none()
         return Reservation.objects.filter(tenant=tenant)
+
+    @extend_schema(request=PriceEstimationSerializer, responses={200: dict})
+    @action(detail=False, methods=['post'], url_path='estimate')
+    def estimate(self, request):
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return Response({'error': 'Tenant context missing.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = PriceEstimationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            from apps.features.reservations.services import PricingEngine
+            estimate_result = PricingEngine.estimate_price(tenant, data)
+            return Response(estimate_result, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(request=CreateBookingSerializer, responses={201: ReservationSerializer})
     def create(self, request, *args, **kwargs):

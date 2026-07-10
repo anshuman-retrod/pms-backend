@@ -5,14 +5,58 @@ from apps.core.accounts.models import (
 )
 
 class AppUserSerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(source='role.name', read_only=True)
+    department_name = serializers.CharField(source='department.name', read_only=True)
+    shift_name = serializers.CharField(source='shift.name', read_only=True)
+    password = serializers.CharField(write_only=True, required=False)
+
+    subscription_plan = serializers.SerializerMethodField()
+    subscription_expiry = serializers.SerializerMethodField()
+    license_key = serializers.SerializerMethodField()
+
+    def get_subscription_plan(self, obj):
+        if not obj.tenant:
+            return "Platform Admin"
+        from apps.core.subscriptions.models import TenantSubscription
+        sub = TenantSubscription.objects.filter(tenant=obj.tenant, status='ACTIVE').first()
+        return sub.plan.name if sub else "Lite Plan"
+
+    def get_subscription_expiry(self, obj):
+        if not obj.tenant:
+            return "Unlimited"
+        from apps.core.subscriptions.models import TenantSubscription
+        sub = TenantSubscription.objects.filter(tenant=obj.tenant, status='ACTIVE').first()
+        return str(sub.end_date) if sub else "N/A"
+
+    def get_license_key(self, obj):
+        if not obj.tenant:
+            return "PLATFORM-ADMIN-KEY"
+        from apps.core.subscriptions.models import TenantProductLicense
+        lic = TenantProductLicense.objects.filter(tenant_product__tenant=obj.tenant, tenant_product__product__code='PMS', status='ACTIVE').first()
+        if not lic:
+            lic = TenantProductLicense.objects.filter(tenant_product__tenant=obj.tenant, status='ACTIVE').first()
+        return lic.license_key if lic else "N/A"
+
+
     class Meta:
         model = AppUser
         fields = (
             'id', 'tenant', 'name', 'username', 'email', 'phone', 
             'avatar_url', 'preferred_language', 'preferred_timezone', 
-            'is_active', 'is_staff', 'created_at', 'updated_at'
+            'is_active', 'is_staff', 'role', 'role_name', 'department', 
+            'department_name', 'shift', 'shift_name', 'created_at', 'updated_at', 'password',
+            'subscription_plan', 'subscription_expiry', 'license_key'
         )
         read_only_fields = ('id', 'created_at', 'updated_at', 'is_staff')
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if password:
+            instance.set_password(password)
+        instance.save()
+        return instance
 
 class PlatformUserSerializer(serializers.ModelSerializer):
     class Meta:

@@ -6,11 +6,12 @@ from django.core.exceptions import ValidationError
 from django.forms.models import model_to_dict
 from apps.features.reservations.models import (
     CorporateAccount, GroupBlock, Reservation, ReservationInventory,
-    ReservationRateSnapshot, ReservationGuest, ReservationEvent
+    ReservationRateSnapshot, ReservationGuest, ReservationEvent,
+    ReservationServiceAddon, ReservationPackage, ReservationCoupon
 )
 from apps.features.crm.models import GuestProfile, GuestContact, GuestDocument
 from apps.features.inventory.models import InventoryUnit, InventoryUnitType
-from apps.features.rates.models import RatePlan, RatePlanVersion
+from apps.features.rates.models import RatePlan, RatePlanVersion, Service, HospitalityPackage, Coupon
 
 def make_serializable(data):
     if isinstance(data, dict):
@@ -248,12 +249,67 @@ class BookingEngine:
                 total_amount += amount
                 tax_amount += amount * Decimal('0.10')  # 10% tax assumption for billing simulation
 
-        # Save financial updates on reservation header
+        # Add packages
+        packages = booking_data.get('packages', [])
+        for pkg_id in packages:
+            try:
+                pkg = HospitalityPackage.objects.get(id=pkg_id, tenant=tenant)
+                ReservationPackage.objects.create(
+                    tenant=tenant,
+                    reservation=reservation,
+                    package=pkg,
+                    price=pkg.price
+                )
+                total_amount += pkg.price
+                tax_amount += pkg.price * Decimal('0.10')
+            except HospitalityPackage.DoesNotExist:
+                continue
+
+        # Add services
+        services = booking_data.get('services', [])
+        for svc_id in services:
+            try:
+                svc = Service.objects.get(id=svc_id, tenant=tenant)
+                ReservationServiceAddon.objects.create(
+                    tenant=tenant,
+                    reservation=reservation,
+                    service=svc,
+                    price=svc.price
+                )
+                total_amount += svc.price
+                tax_amount += svc.price * Decimal('0.10')
+            except Service.DoesNotExist:
+                continue
+
+        # Apply coupon
+        coupon_code = booking_data.get('coupon_code')
+        discount_amount = Decimal('0.00')
+        if coupon_code:
+            try:
+                coupon = Coupon.objects.get(tenant=tenant, code=coupon_code.upper().strip(), is_active=True)
+                if not coupon.max_uses or coupon.current_uses < coupon.max_uses:
+                    if coupon.discount_type == 'FLAT':
+                        discount_amount = coupon.discount_value
+                    elif coupon.discount_type == 'PERCENTAGE':
+                        discount_amount = total_amount * (coupon.discount_value / Decimal('100.0'))
+                    
+                    ReservationCoupon.objects.create(
+                        tenant=tenant,
+                        reservation=reservation,
+                        coupon=coupon
+                    )
+                    coupon.current_uses += 1
+                    coupon.save()
+            except Coupon.DoesNotExist:
+                pass
+
         reservation.total_amount = total_amount
         reservation.tax_amount = tax_amount
-        reservation.balance_amount = total_amount + tax_amount
+        reservation.discount_amount = discount_amount
+        # After discounts and tax
+        reservation.balance_amount = (total_amount + tax_amount) - discount_amount
         reservation.status = 'CONFIRMED'
-        reservation.save(update_fields=['total_amount', 'tax_amount', 'balance_amount', 'status'])
+        reservation.save()
 
         # Update Group Block pickup count
         if group_block:

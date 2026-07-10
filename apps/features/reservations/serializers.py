@@ -97,6 +97,20 @@ class CreateBookingSerializer(serializers.Serializer):
         child=serializers.JSONField()
     )
 
+    # Extra Items
+    packages = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
+    services = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
+    coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class PriceEstimationSerializer(serializers.Serializer):
+    arrival_date = serializers.DateField()
+    departure_date = serializers.DateField()
+    allocations = serializers.ListField(child=serializers.JSONField())
+    packages = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
+    services = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
+    coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
 
 class AssignRoomSerializer(serializers.Serializer):
     allocation_id = serializers.UUIDField()

@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from apps.core.common.models import (
     SystemLanguage, SystemTax, SystemDocumentType,
-    SystemFacility, SystemCurrency, SystemDateFormat, SystemTimeFormat
+    SystemCurrency, SystemDateFormat, SystemTimeFormat,
+    Department, Shift
 )
 
 class SystemLanguageSerializer(serializers.ModelSerializer):
@@ -19,11 +20,6 @@ class SystemDocumentTypeSerializer(serializers.ModelSerializer):
         model = SystemDocumentType
         fields = '__all__'
 
-class SystemFacilitySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SystemFacility
-        fields = '__all__'
-
 class SystemCurrencySerializer(serializers.ModelSerializer):
     class Meta:
         model = SystemCurrency
@@ -37,4 +33,16 @@ class SystemDateFormatSerializer(serializers.ModelSerializer):
 class SystemTimeFormatSerializer(serializers.ModelSerializer):
     class Meta:
         model = SystemTimeFormat
+        fields = '__all__'
+
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Department
+        fields = '__all__'
+
+
+class ShiftSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Shift
         fields = '__all__'

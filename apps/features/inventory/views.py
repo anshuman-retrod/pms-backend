@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from apps.features.inventory.models import (
@@ -10,12 +11,16 @@ from apps.features.inventory.models import (
     Building, Floor, FloorPlan
 )
 from apps.features.inventory.serializers import (
-    InventoryUnitCategorySerializer, InventoryUnitTypeSerializer,
-    InventoryUnitSerializer, InventoryRelationshipSerializer,
-    AttributeDefinitionSerializer, InventoryUnitAttributeSerializer,
-    AmenitySerializer, InventoryUnitTypeAmenitySerializer,
-    InventoryMediaSerializer,
+    InventoryUnitCategorySerializer, InventoryUnitTypeSerializer, InventoryUnitSerializer,
+    InventoryRelationshipSerializer, AttributeDefinitionSerializer, InventoryUnitAttributeSerializer,
+    AmenitySerializer, InventoryUnitTypeAmenitySerializer, InventoryMediaSerializer,
     BuildingSerializer, FloorSerializer, FloorPlanSerializer
+)
+from apps.features.inventory.filters import (
+    InventoryUnitCategoryFilter, InventoryUnitTypeFilter, InventoryUnitFilter,
+    InventoryRelationshipFilter, AttributeDefinitionFilter, InventoryUnitAttributeFilter,
+    AmenityFilter, InventoryUnitTypeAmenityFilter, InventoryMediaFilter,
+    BuildingFilter, FloorFilter, FloorPlanFilter
 )
 from apps.features.inventory.permissions import (
     HasInventoryPermission, IsAmenityManager, IsAttributeManager, CanCloneInventoryType
@@ -23,7 +28,13 @@ from apps.features.inventory.permissions import (
 
 class InventoryUnitCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryUnitCategorySerializer
-    permission_classes = [HasInventoryPermission]
+    filterset_class = InventoryUnitCategoryFilter
+    search_fields = ['code', 'name']
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        return [HasInventoryPermission()]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
@@ -34,19 +45,19 @@ class InventoryUnitCategoryViewSet(viewsets.ModelViewSet):
 
 class InventoryUnitTypeViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryUnitTypeSerializer
-    permission_classes = [HasInventoryPermission]
+    filterset_class = InventoryUnitTypeFilter
+    search_fields = ['code', 'name']
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        return [HasInventoryPermission()]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         if not tenant:
             return InventoryUnitType.objects.none()
-        
-        # Optionally filter by property_id
-        property_id = self.request.query_params.get('property_id')
-        qs = InventoryUnitType.objects.filter(tenant=tenant)
-        if property_id:
-            qs = qs.filter(property_id=property_id)
-        return qs
+        return InventoryUnitType.objects.filter(tenant=tenant)
 
     @action(detail=True, methods=['post'], permission_classes=[CanCloneInventoryType])
     def clone(self, request, pk=None):
@@ -138,18 +149,19 @@ class InventoryUnitTypeViewSet(viewsets.ModelViewSet):
 
 class InventoryUnitViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryUnitSerializer
-    permission_classes = [HasInventoryPermission]
+    filterset_class = InventoryUnitFilter
+    search_fields = ['code', 'name']
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'bulk_update']:
+            return [permissions.IsAuthenticated()]
+        return [HasInventoryPermission()]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         if not tenant:
             return InventoryUnit.objects.none()
-            
-        property_id = self.request.query_params.get('property_id')
-        qs = InventoryUnit.objects.filter(tenant=tenant)
-        if property_id:
-            qs = qs.filter(property_id=property_id)
-        return qs
+        return InventoryUnit.objects.filter(tenant=tenant)
 
 
 class InventoryRelationshipViewSet(viewsets.ModelViewSet):
@@ -187,7 +199,11 @@ class InventoryUnitAttributeViewSet(viewsets.ModelViewSet):
 
 class AmenityViewSet(viewsets.ModelViewSet):
     serializer_class = AmenitySerializer
-    permission_classes = [IsAmenityManager]
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        return [IsAmenityManager()]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
@@ -198,13 +214,57 @@ class AmenityViewSet(viewsets.ModelViewSet):
 
 class InventoryMediaViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryMediaSerializer
-    permission_classes = [HasInventoryPermission]
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'upload']:
+            return [permissions.IsAuthenticated()]
+        return [HasInventoryPermission()]
 
     def get_queryset(self):
         tenant = getattr(self.request, 'tenant', None)
         if not tenant:
             return InventoryMedia.objects.none()
         return InventoryMedia.objects.filter(tenant=tenant)
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def upload(self, request):
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return Response({'error': 'Tenant context is missing.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'No file was provided.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        unit_type_id = request.data.get('inventory_unit_type')
+        if not unit_type_id:
+            return Response({'error': 'inventory_unit_type is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        from django.core.files.storage import default_storage
+        import os
+        import uuid
+        
+        # Save file to media/inventory/ with a unique name to avoid collision
+        ext = os.path.splitext(file_obj.name)[1]
+        unique_filename = f"inventory/{uuid.uuid4()}{ext}"
+        saved_path = default_storage.save(unique_filename, file_obj)
+        file_url = request.build_absolute_uri(default_storage.url(saved_path))
+        
+        # Create media record (or update existing)
+        existing = InventoryMedia.objects.filter(tenant=tenant, inventory_unit_type_id=unit_type_id).first()
+        if existing:
+            existing.media_url = file_url
+            existing.save()
+            media = existing
+        else:
+            media = InventoryMedia.objects.create(
+                tenant=tenant,
+                inventory_unit_type_id=unit_type_id,
+                media_url=file_url,
+                media_type='image'
+            )
+            
+        return Response(InventoryMediaSerializer(media, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
 class BuildingViewSet(viewsets.ModelViewSet):

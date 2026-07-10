@@ -84,21 +84,6 @@ class SystemDocumentType(models.Model):
         return self.name
 
 
-class SystemFacility(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='system_facilities')
-    name = models.CharField(max_length=120)
-    chargeable = models.BooleanField(default=False)
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    description = models.TextField(blank=True, default="")
-    icon_name = models.CharField(max_length=64, default="wifi")
-
-    class Meta:
-        db_table = 'system_facilities'
-
-    def __str__(self):
-        return self.name
-
 
 class SystemCurrency(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -164,3 +149,35 @@ class SystemLanguage(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.code})"
+
+
+class Department(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='departments')
+    name = models.CharField(max_length=120)
+    code = models.CharField(max_length=64)
+    description = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = 'system_departments'
+        unique_together = ('tenant', 'code')
+
+    def __str__(self):
+        return self.name
+
+
+class Shift(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='shifts')
+    name = models.CharField(max_length=120)
+    code = models.CharField(max_length=64)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    description = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = 'system_shifts'
+        unique_together = ('tenant', 'code')
+
+    def __str__(self):
+        return f"{self.name} ({self.start_time} - {self.end_time})"

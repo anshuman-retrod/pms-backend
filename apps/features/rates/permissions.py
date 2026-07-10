@@ -35,6 +35,12 @@ class HasRatePermission(permissions.BasePermission):
             return True
 
         perm_code = self.get_required_permission(request, view)
+        
+        # Fallback to settings permissions if explicit rate perm is not given
+        fallback_perm_code = 'settings.view'
+        if perm_code in ['rate.create', 'rate.edit', 'rate.delete']:
+            fallback_perm_code = 'settings.edit'
+
         tenant = getattr(request, 'tenant', None)
         if not tenant:
             return False
@@ -45,14 +51,14 @@ class HasRatePermission(permissions.BasePermission):
             property_id = view.kwargs.get('property_id')
         
         # In rebuild or creating config, it could be in request.data
-        if not property_id and isinstance(request.data, dict):
+        if not property_id and hasattr(request.data, 'get'):
             property_id = request.data.get('property_id') or request.data.get('property')
 
         # If no specific property ID context is given, allow operations if authorized for ANY property under the tenant
         if not property_id:
             user_roles = UserPropertyRole.objects.filter(user=request.user, tenant=tenant)
             for ur in user_roles:
-                if ur.role.permissions.filter(permission__code=perm_code).exists():
+                if ur.role.permissions.filter(permission__code__in=[perm_code, fallback_perm_code]).exists():
                     return True
             return False
 
@@ -66,7 +72,7 @@ class HasRatePermission(permissions.BasePermission):
         if not user_property_role:
             return False
 
-        return user_property_role.role.permissions.filter(permission__code=perm_code).exists()
+        return user_property_role.role.permissions.filter(permission__code__in=[perm_code, fallback_perm_code]).exists()
 
 
 class IsRateCalendarManager(HasRatePermission):

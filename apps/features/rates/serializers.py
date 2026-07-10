@@ -4,8 +4,22 @@ from apps.features.rates.models import (
     MealPlan, CancellationPolicy, ChildPolicy, RatePlan,
     RatePlanInventoryType, RatePlanVersion, DerivedRateConfig,
     RateRuleOccupancy, RateRuleDayOfWeek, RateCalendar,
-    PackageProduct, PackageProductRatePlan
+    TenantMealPlanPrice, HospitalityPackage, ServiceCategory, Service, Coupon
 )
+
+class TenantMealPlanPriceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TenantMealPlanPrice
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by')
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = request.user if request and request.user.is_authenticated else None
+        return super().create(validated_data)
+
 
 class MealPlanSerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,8 +29,9 @@ class MealPlanSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context.get('request')
+        is_super = request and request.user and getattr(request.user, 'role', '') == 'super_admin'
         tenant = getattr(request, 'tenant', None)
-        validated_data['tenant'] = tenant
+        validated_data['tenant'] = None if is_super else tenant
         validated_data['created_by'] = request.user if request and request.user.is_authenticated else None
         return super().create(validated_data)
 
@@ -230,11 +245,27 @@ class RateCalendarSerializer(serializers.ModelSerializer):
         return data
 
 
-class PackageProductSerializer(serializers.ModelSerializer):
+class HospitalityPackageSerializer(serializers.ModelSerializer):
     class Meta:
-        model = PackageProduct
+        model = HospitalityPackage
         fields = '__all__'
         read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by')
+        validators = []
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        name = data.get('name')
+        
+        # Check uniqueness manually since we disabled automatic validators
+        if name and tenant:
+            qs = HospitalityPackage.objects.filter(tenant=tenant, name=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({"name": "A package with this name already exists."})
+                
+        return data
 
     def create(self, validated_data):
         request = self.context.get('request')
@@ -244,34 +275,79 @@ class PackageProductSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class PackageProductRatePlanSerializer(serializers.ModelSerializer):
+class RebuildCalendarSerializer(serializers.Serializer):
+    property_id = serializers.UUIDField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+
+
+class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = PackageProductRatePlan
+        model = Service
         fields = '__all__'
-        read_only_fields = ('id', 'tenant')
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by')
+        validators = []
 
     def validate(self, data):
         request = self.context.get('request')
         tenant = getattr(request, 'tenant', None)
-
-        rp = data.get('rate_plan')
-        pp = data.get('package_product')
-
-        if rp and rp.tenant != tenant:
-            raise ValidationError("Rate plan must belong to the resolved tenant context.")
-        if pp and pp.tenant != tenant:
-            raise ValidationError("Package product must belong to the resolved tenant context.")
-
+        name = data.get('name')
+        
+        if name and tenant:
+            qs = Service.objects.filter(tenant=tenant, name=name)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({"name": "A service with this name already exists."})
+                
         return data
 
     def create(self, validated_data):
         request = self.context.get('request')
         tenant = getattr(request, 'tenant', None)
         validated_data['tenant'] = tenant
+        validated_data['created_by'] = request.user if request and request.user.is_authenticated else None
         return super().create(validated_data)
 
 
-class RebuildCalendarSerializer(serializers.Serializer):
-    property_id = serializers.UUIDField()
-    start_date = serializers.DateField()
-    end_date = serializers.DateField()
+class CouponSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Coupon
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'current_uses', 'created_at', 'updated_at', 'created_by', 'updated_by')
+        validators = []
+
+    def validate(self, data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        code = data.get('code')
+        
+        if code and tenant:
+            qs = Coupon.objects.filter(tenant=tenant, code=code.upper().strip())
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({"code": "A coupon with this code already exists."})
+                
+        return data
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = request.user if request and request.user.is_authenticated else None
+        return super().create(validated_data)
+
+
+class ServiceCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceCategory
+        fields = '__all__'
+        read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by')
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        tenant = getattr(request, 'tenant', None)
+        validated_data['tenant'] = tenant
+        validated_data['created_by'] = request.user if request and request.user.is_authenticated else None
+        return super().create(validated_data)
