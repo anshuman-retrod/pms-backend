@@ -5,13 +5,14 @@ from django.db.models import Q
 from apps.core.common.models import (
     SystemLanguage, SystemTax, SystemDocumentType,
     SystemCurrency, SystemDateFormat, SystemTimeFormat,
-    Department, Shift
+    Department, Shift, OccupancyType, BookingSource
 )
 from apps.core.common.serializers import (
     SystemLanguageSerializer, SystemTaxSerializer,
     SystemDocumentTypeSerializer, SystemCurrencySerializer,
     SystemDateFormatSerializer, SystemTimeFormatSerializer,
-    DepartmentSerializer, ShiftSerializer
+    DepartmentSerializer, ShiftSerializer, OccupancyTypeSerializer,
+    BookingSourceSerializer
 )
 
 class SystemLanguageViewSet(viewsets.ModelViewSet):
@@ -94,3 +95,18 @@ class DepartmentViewSet(TenantAwareSettingsViewSet):
 class ShiftViewSet(TenantAwareSettingsViewSet):
     serializer_class = ShiftSerializer
     queryset = Shift.objects.all()
+
+
+class OccupancyTypeViewSet(TenantAwareSettingsViewSet):
+    serializer_class = OccupancyTypeSerializer
+    queryset = OccupancyType.objects.all()
+
+
+class BookingSourceViewSet(viewsets.ModelViewSet):
+    serializer_class = BookingSourceSerializer
+    queryset = BookingSource.objects.all()
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]

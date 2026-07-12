@@ -181,3 +181,34 @@ class Shift(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.start_time} - {self.end_time})"
+
+
+class OccupancyType(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, null=True, blank=True, related_name='occupancy_types')
+    name = models.CharField(max_length=120)
+    code = models.CharField(max_length=64)
+    max_guests = models.IntegerField(default=1)
+    multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=1.00)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'system_occupancy_types'
+        unique_together = ('tenant', 'code')
+
+    def __str__(self):
+        return f"{self.name} ({self.code}) x{self.multiplier}"
+
+
+class BookingSource(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120, unique=True)
+    icon = models.CharField(max_length=120, blank=True, default="")
+    details = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'system_booking_sources'
+
+    def __str__(self):
+        return self.name

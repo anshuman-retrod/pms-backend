@@ -52,8 +52,9 @@ class ProductAccessMiddleware(MiddlewareMixin):
                 product_code = 'PMS'
                 feature_code = 'PMS.RATES'
             elif path.startswith('/api/crm/'):
-                product_code = 'CRM'
-                feature_code = 'CRM.GUESTS'
+                # Allow guest profile management under PMS subscription context
+                product_code = 'PMS'
+                feature_code = 'PMS.RESERVATIONS'
             elif path.startswith('/api/maintenance/'):
                 product_code = 'HOUSEKEEPING'
                 feature_code = 'HOUSEKEEPING.MAINTENANCE'

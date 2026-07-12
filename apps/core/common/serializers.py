@@ -2,7 +2,7 @@ from rest_framework import serializers
 from apps.core.common.models import (
     SystemLanguage, SystemTax, SystemDocumentType,
     SystemCurrency, SystemDateFormat, SystemTimeFormat,
-    Department, Shift
+    Department, Shift, OccupancyType, BookingSource
 )
 
 class SystemLanguageSerializer(serializers.ModelSerializer):
@@ -45,4 +45,16 @@ class DepartmentSerializer(serializers.ModelSerializer):
 class ShiftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shift
+        fields = '__all__'
+
+
+class OccupancyTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OccupancyType
+        fields = '__all__'
+
+
+class BookingSourceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BookingSource
         fields = '__all__'

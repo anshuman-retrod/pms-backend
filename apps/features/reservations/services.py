@@ -13,6 +13,33 @@ from apps.features.crm.models import GuestProfile, GuestContact, GuestDocument
 from apps.features.inventory.models import InventoryUnit, InventoryUnitType
 from apps.features.rates.models import RatePlan, RatePlanVersion, Service, HospitalityPackage, Coupon
 
+from apps.core.common.redis_lock import redis_distributed_lock
+
+def check_room_availability(tenant, room, check_in_date, check_out_date, exclude_allocation_id=None):
+    """
+    Checks if a physical room (InventoryUnit) is available on the specified dates.
+    Uses a Redis distributed lock to serialize checks and prevent concurrent double bookings.
+    If Redis fails, falls back to a PostgreSQL row-level lock (select_for_update) on the room.
+    """
+    lock_key = f"pms:lock:room:unit:{room.id}"
+    with redis_distributed_lock(lock_key) as acquired:
+        if not acquired:
+            # Fallback row-level database lock
+            list(InventoryUnit.objects.select_for_update().filter(id=room.id))
+            
+        overlapping = ReservationInventory.objects.filter(
+            tenant=tenant,
+            inventory_unit=room,
+            check_in_date__lt=check_out_date,
+            check_out_date__gt=check_in_date
+        ).exclude(reservation__status='CANCELLED')
+        
+        if exclude_allocation_id:
+            overlapping = overlapping.exclude(id=exclude_allocation_id)
+            
+        if overlapping.exists():
+            raise ValidationError(f"Room {room.name} is already booked or occupied for these dates.")
+
 def make_serializable(data):
     if isinstance(data, dict):
         return {k: make_serializable(v) for k, v in data.items()}
@@ -184,11 +211,28 @@ class BookingEngine:
         for alloc_item in booking_data.get('allocations', []):
             unit_type = InventoryUnitType.objects.get(id=alloc_item['inventory_unit_type_id'], tenant=tenant)
             
+            unit_id = alloc_item.get('inventory_unit_id')
+            assigned_unit = None
+            if unit_id:
+                try:
+                    assigned_unit = InventoryUnit.objects.get(id=unit_id, tenant=tenant)
+                except InventoryUnit.DoesNotExist:
+                    pass
+
+            if assigned_unit:
+                check_room_availability(
+                    tenant=tenant,
+                    room=assigned_unit,
+                    check_in_date=alloc_item['check_in_date'],
+                    check_out_date=alloc_item['check_out_date']
+                )
+
             # Create Reservation Inventory Allocation
             allocation = ReservationInventory.objects.create(
                 tenant=tenant,
                 reservation=reservation,
                 inventory_unit_type=unit_type,
+                inventory_unit=assigned_unit,
                 check_in_date=alloc_item['check_in_date'],
                 check_out_date=alloc_item['check_out_date'],
                 adult_count=alloc_item.get('adult_count', 2),
@@ -220,8 +264,25 @@ class BookingEngine:
             # Create daily rate snapshots
             rate_plan = RatePlan.objects.get(id=alloc_item['rate_plan_id'], tenant=tenant)
             for rate_day in alloc_item.get('nightly_rates', []):
-                rate_version = RatePlanVersion.objects.get(id=rate_day['rate_plan_version_id'], rate_plan=rate_plan)
-                amount = Decimal(str(rate_day['amount']))
+                version_id = rate_day.get('rate_plan_version_id')
+                rate_version = None
+                if version_id:
+                    try:
+                        rate_version = RatePlanVersion.objects.get(id=version_id, rate_plan=rate_plan)
+                    except RatePlanVersion.DoesNotExist:
+                        pass
+                
+                if not rate_version:
+                    rate_version = rate_plan.versions.first()
+                
+                if not rate_version:
+                    rate_version = RatePlanVersion.objects.create(
+                        rate_plan=rate_plan,
+                        version_number=1,
+                        snapshot={}
+                    )
+
+                amount = Decimal(str(rate_day.get('amount', 0)))
                 
                 # Setup simple rate/policy snapshot representation
                 rate_snapshot = {
@@ -344,6 +405,14 @@ class RoomAssignmentEngine:
         if room.operational_status != 'operational':
             raise ValidationError(f"Room {room.name} is currently offline/under maintenance.")
 
+        check_room_availability(
+            tenant=tenant,
+            room=room,
+            check_in_date=allocation.check_in_date,
+            check_out_date=allocation.check_out_date,
+            exclude_allocation_id=allocation.id
+        )
+
         upgrade_from = None
         if room.inventory_unit_type != allocation.inventory_unit_type:
             # Upgrade occurred
@@ -428,6 +497,14 @@ class RoomAssignmentEngine:
 
         if new_room.operational_status != 'operational':
             raise ValidationError(f"Room {new_room.name} is currently offline/under maintenance.")
+
+        check_room_availability(
+            tenant=tenant,
+            room=new_room,
+            check_in_date=allocation.check_in_date,
+            check_out_date=allocation.check_out_date,
+            exclude_allocation_id=allocation.id
+        )
 
         old_room_name = allocation.inventory_unit.name if allocation.inventory_unit else "Unassigned"
         allocation.inventory_unit = new_room

@@ -17,23 +17,23 @@ class HasReservationPermission(permissions.BasePermission):
         
         # Fallback mapping based on standard REST framework view actions
         if view.action in ['list', 'retrieve', 'search', 'timeline']:
-            return 'reservation.view'
+            return 'reservations.view'
         elif view.action == 'create':
-            return 'reservation.create'
+            return 'reservations.create'
         elif view.action in ['update', 'partial_update', 'modify_remarks']:
-            return 'reservation.edit'
+            return 'reservations.edit'
         elif view.action == 'destroy':
-            return 'reservation.delete'
+            return 'reservations.delete'
         elif view.action == 'assign_room':
-            return 'reservation.assign_room'
+            return 'reservations.assign_room'
         elif view.action == 'check_in':
-            return 'reservation.check_in'
+            return 'reservations.check_in'
         elif view.action == 'check_out':
-            return 'reservation.check_out'
+            return 'reservations.check_out'
         elif view.action == 'cancel':
-            return 'reservation.cancel'
+            return 'reservations.cancel'
         
-        return 'reservation.view'
+        return 'reservations.view'
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:

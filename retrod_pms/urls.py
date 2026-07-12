@@ -36,7 +36,8 @@ from apps.core.common.views import (
     SystemLanguageViewSet, SystemTaxViewSet,
     SystemDocumentTypeViewSet, SystemCurrencyViewSet,
     SystemDateFormatViewSet, SystemTimeFormatViewSet,
-    DepartmentViewSet, ShiftViewSet
+    DepartmentViewSet, ShiftViewSet, OccupancyTypeViewSet,
+    BookingSourceViewSet
 )
 
 # Initialize DRF Router
@@ -87,6 +88,8 @@ router.register(r'superadmin-date-formats', SystemDateFormatViewSet, basename='s
 router.register(r'superadmin-time-formats', SystemTimeFormatViewSet, basename='superadmintimeformats')
 router.register(r'superadmin-departments', DepartmentViewSet, basename='superadmindepartments')
 router.register(r'superadmin-shifts', ShiftViewSet, basename='superadminshifts')
+router.register(r'superadmin-occupancy-types', OccupancyTypeViewSet, basename='superadminoccupancytypes')
+router.register(r'superadmin-booking-sources', BookingSourceViewSet, basename='superadminbookingsources')
 
 from django.http import JsonResponse
 

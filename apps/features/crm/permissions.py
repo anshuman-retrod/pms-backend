@@ -15,17 +15,16 @@ class HasGuestPermission(permissions.BasePermission):
         if self.required_permission:
             return self.required_permission
         
-        # Fallback mapping based on standard REST framework view actions
         if view.action in ['list', 'retrieve', 'search', 'activities', 'active']:
-            return 'guest.view'
+            return 'guests.view'
         elif view.action == 'create':
-            return 'guest.create'
+            return 'guests.create'
         elif view.action in ['update', 'partial_update']:
-            return 'guest.edit'
+            return 'guests.edit'
         elif view.action == 'destroy':
-            return 'guest.delete'
+            return 'guests.delete'
         
-        return 'guest.view'
+        return 'guests.view'
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
@@ -50,6 +49,13 @@ class HasGuestPermission(permissions.BasePermission):
             for ur in user_roles:
                 if ur.role.permissions.filter(permission__code=perm_code).exists():
                     return True
+                # Fallback checks for reservation permissions
+                if perm_code == 'guests.create' and ur.role.permissions.filter(permission__code='reservations.create').exists():
+                    return True
+                if perm_code == 'guests.view' and ur.role.permissions.filter(permission__code='reservations.view').exists():
+                    return True
+                if perm_code == 'guests.edit' and ur.role.permissions.filter(permission__code='reservations.edit').exists():
+                    return True
             return False
 
         # Specific property checks
@@ -62,7 +68,18 @@ class HasGuestPermission(permissions.BasePermission):
         if not user_property_role:
             return False
 
-        return user_property_role.role.permissions.filter(permission__code=perm_code).exists()
+        if user_property_role.role.permissions.filter(permission__code=perm_code).exists():
+            return True
+            
+        # Fallback checks for reservation permissions
+        if perm_code == 'guests.create' and user_property_role.role.permissions.filter(permission__code='reservations.create').exists():
+            return True
+        if perm_code == 'guests.view' and user_property_role.role.permissions.filter(permission__code='reservations.view').exists():
+            return True
+        if perm_code == 'guests.edit' and user_property_role.role.permissions.filter(permission__code='reservations.edit').exists():
+            return True
+
+        return False
 
 
 class IsMergeManager(HasGuestPermission):
