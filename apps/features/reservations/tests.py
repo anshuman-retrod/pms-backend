@@ -427,7 +427,6 @@ class ReservationEngineTests(APITestCase):
         coupon = Coupon.objects.create(
             tenant=self.tenant,
             code="SUMMER50",
-            name="Summer 50%",
             discount_type="PERCENTAGE",
             discount_value=Decimal("50.00"),
             is_active=True
