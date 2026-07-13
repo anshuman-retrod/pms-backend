@@ -436,7 +436,7 @@ class ReservationEngineTests(APITestCase):
             'departure_date': '2026-07-17',
             'allocations': [
                 {
-                    'inventory_unit_type_id': str(self.room_type.id),
+                    'inventory_unit_type_id': str(self.deluxe_type.id),
                     'check_in_date': '2026-07-15',
                     'check_out_date': '2026-07-17',
                     'nightly_rates': [{'date': '2026-07-15', 'amount': '1000'}, {'date': '2026-07-16', 'amount': '1000'}]
