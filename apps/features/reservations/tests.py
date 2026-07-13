@@ -9,7 +9,7 @@ from apps.core.tenants.models import Tenant, Property
 from apps.features.crm.models import GuestProfile, GuestContact
 from apps.core.reference.models import Country, ReservationSource
 from apps.features.inventory.models import InventoryUnit, InventoryUnitType
-from apps.features.rates.models import RatePlan, RatePlanVersion
+from apps.features.rates.models import RatePlan, RatePlanVersion, Coupon
 from apps.features.reservations.models import (
     CorporateAccount, GroupBlock, Reservation, ReservationInventory,
     ReservationEvent, ReservationRateSnapshot
