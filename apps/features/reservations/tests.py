@@ -423,3 +423,29 @@ class ReservationEngineTests(APITestCase):
         self.assertEqual(self.client.post('/api/reservations/bookings/validate-pricing/', {}).status_code, 200)
         self.assertEqual(self.client.post('/api/reservations/bookings/validate-restrictions/', {}).status_code, 200)
 
+        # 5. Price estimation with Coupon
+        coupon = Coupon.objects.create(
+            tenant=self.tenant,
+            code="SUMMER50",
+            name="Summer 50%",
+            discount_type="PERCENTAGE",
+            discount_value=Decimal("50.00"),
+            is_active=True
+        )
+        estimate_res = self.client.post('/api/reservations/bookings/estimate/', {
+            'arrival_date': '2026-07-15',
+            'departure_date': '2026-07-17',
+            'allocations': [
+                {
+                    'inventory_unit_type_id': str(self.room_type.id),
+                    'check_in_date': '2026-07-15',
+                    'check_out_date': '2026-07-17',
+                    'nightly_rates': [{'date': '2026-07-15', 'amount': '1000'}, {'date': '2026-07-16', 'amount': '1000'}]
+                }
+            ],
+            'coupon_code': 'SUMMER50'
+        }, format='json')
+        self.assertEqual(estimate_res.status_code, 200)
+        self.assertEqual(estimate_res.data['coupon_discount'], 1000.0) # 50% of 2000 base
+        self.assertEqual(estimate_res.data['total_price'], 1200.0) # (2000 base + 200 tax) - 1000 discount
+

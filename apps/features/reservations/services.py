@@ -867,3 +867,99 @@ class ReservationEnhancementEngine:
 
         return primary
 
+
+class PricingEngine:
+    @staticmethod
+    def estimate_price(tenant, data):
+        """
+        Estimates the total reservation price, daily breakdowns, taxes, and coupon discounts.
+        data format: PriceEstimationSerializer validated_data
+        """
+        # Parse allocations and calculate base rates
+        total_amount = Decimal('0.00')
+        tax_amount = Decimal('0.00')
+        discount_amount = Decimal('0.00')
+        
+        breakdown = []
+        
+        # Calculate rates for allocations
+        for alloc in data.get('allocations', []):
+            try:
+                from apps.features.inventory.models import InventoryUnitType
+                unit_type = InventoryUnitType.objects.get(id=alloc.get('inventory_unit_type_id'), tenant=tenant)
+                unit_type_name = unit_type.name
+            except Exception:
+                unit_type_name = "Room"
+                
+            alloc_total = Decimal('0.00')
+            for rate_day in alloc.get('nightly_rates', []):
+                amt = Decimal(str(rate_day.get('amount', 0)))
+                alloc_total += amt
+            
+            breakdown.append({
+                'label': f"Room Charges ({unit_type_name})",
+                'amount': float(alloc_total)
+            })
+            total_amount += alloc_total
+            tax_amount += alloc_total * Decimal('0.10') # 10% tax simulation
+            
+        # Add packages
+        for pkg_id in data.get('packages', []):
+            try:
+                pkg = HospitalityPackage.objects.get(id=pkg_id, tenant=tenant)
+                breakdown.append({
+                    'label': f"Package: {pkg.name}",
+                    'amount': float(pkg.price)
+                })
+                total_amount += pkg.price
+                tax_amount += pkg.price * Decimal('0.10')
+            except HospitalityPackage.DoesNotExist:
+                pass
+                
+        # Add services
+        for svc_id in data.get('services', []):
+            try:
+                svc = Service.objects.get(id=svc_id, tenant=tenant)
+                breakdown.append({
+                    'label': f"Service: {svc.name}",
+                    'amount': float(svc.price)
+                })
+                total_amount += svc.price
+                tax_amount += svc.price * Decimal('0.10')
+            except Service.DoesNotExist:
+                pass
+                
+        # Calculate discount from coupon
+        coupon_code = data.get('coupon_code')
+        if coupon_code:
+            try:
+                coupon = Coupon.objects.get(tenant=tenant, code=coupon_code.upper().strip(), is_active=True)
+                if not coupon.max_uses or coupon.current_uses < coupon.max_uses:
+                    if coupon.discount_type == 'FLAT':
+                        discount_amount = coupon.discount_value
+                    elif coupon.discount_type == 'PERCENTAGE':
+                        discount_amount = total_amount * (coupon.discount_value / Decimal('100.0'))
+                        
+                    breakdown.append({
+                        'label': f"Discount ({coupon.code})",
+                        'amount': float(-discount_amount)
+                    })
+            except Coupon.DoesNotExist:
+                pass
+                
+        total_price = (total_amount + tax_amount) - discount_amount
+        
+        # Include simulated tax breakdown row
+        breakdown.append({
+            'label': "Estimated Tax (10%)",
+            'amount': float(tax_amount)
+        })
+        
+        return {
+            'breakdown': breakdown,
+            'base_amount': float(total_amount),
+            'tax_amount': float(tax_amount),
+            'coupon_discount': float(discount_amount),
+            'total_price': float(total_price)
+        }
+
