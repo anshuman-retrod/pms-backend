@@ -40,6 +40,10 @@ class CleaningTask(BaseModel):
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+        if self.status == 'COMPLETED':
+            if self.room.housekeeping_status != 'clean':
+                self.room.housekeeping_status = 'clean'
+                self.room.save(update_fields=['housekeeping_status'])
 
     def __str__(self):
         return f"Cleaning {self.room.name} ({self.status})"
