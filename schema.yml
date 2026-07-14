@@ -5342,6 +5342,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/CleaningTask'
           description: ''
+  /api/housekeeping/tasks/bulk-assign/:
+    post:
+      operationId: housekeeping_tasks_bulk_assign_create
+      description: Bulk update rooms status and assign housekeeping staff
+      tags:
+      - housekeeping
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/housekeeping/turndown/:
     get:
       operationId: housekeeping_turndown_list
