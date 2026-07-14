@@ -14329,6 +14329,22 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/restrictions/bulk-create/:
+    post:
+      operationId: restrictions_bulk_create_create
+      description: Bulk create or update restrictions over a date range
+      tags:
+      - restrictions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/role-permissions/:
     get:
       operationId: role_permissions_list

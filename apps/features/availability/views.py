@@ -125,6 +125,63 @@ class InventoryRestrictionViewSet(viewsets.ModelViewSet):
             qs = qs.filter(property_id=property_id)
         return qs
 
+    @extend_schema(
+        request=None,
+        responses={200: OpenApiTypes.OBJECT},
+        description="Bulk create or update restrictions over a date range"
+    )
+    @action(detail=False, methods=['post'], url_path='bulk-create')
+    def bulk_create(self, request):
+        tenant = getattr(self.request, 'tenant', None)
+        if not tenant:
+            return Response({'error': 'Tenant context missing.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        property_id = request.data.get('property_id')
+        if not property_id:
+            from apps.core.tenants.models import Property
+            propObj = Property.objects.filter(tenant=tenant).first()
+            if propObj:
+                property_id = propObj.id
+            else:
+                return Response({'error': 'property_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        start_date_str = request.data.get('start_date')
+        end_date_str = request.data.get('end_date')
+        inventory_unit_type_id = request.data.get('inventory_unit_type')
+        restriction_type = request.data.get('restriction_type')
+        restriction_value = request.data.get('restriction_value')
+
+        if not start_date_str or not end_date_str or not restriction_type:
+            return Response({'error': 'start_date, end_date, and restriction_type are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        import datetime
+        try:
+            start_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if start_date > end_date:
+            return Response({'error': 'start_date cannot be after end_date'}, status=status.HTTP_400_BAD_REQUEST)
+
+        created_count = 0
+        current_date = start_date
+        while current_date <= end_date:
+            InventoryRestriction.objects.update_or_create(
+                tenant=tenant,
+                property_id=property_id,
+                date=current_date,
+                inventory_unit_type_id=inventory_unit_type_id if inventory_unit_type_id and inventory_unit_type_id != "All Room Types" else None,
+                restriction_type=restriction_type,
+                defaults={
+                    'restriction_value': int(restriction_value) if restriction_value is not None else None
+                }
+            )
+            created_count += 1
+            current_date += datetime.timedelta(days=1)
+
+        return Response({'status': 'success', 'created_records': created_count}, status=status.HTTP_200_OK)
+
 
 class InventoryHoldViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryHoldSerializer
