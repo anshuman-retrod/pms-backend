@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
+from django.utils import timezone
 
 from apps.features.housekeeping.models import (
     CleaningTask, RoomInspection, DeepCleaningSchedule,
@@ -82,17 +83,18 @@ class CleaningTaskViewSet(HousekeepingBaseViewSet):
                 room.save(update_fields=['housekeeping_status'])
                 updated_rooms.append(room.id)
 
-            if assigned_staff_id and assigned_staff_id != "No change":
-                task = CleaningTask.objects.filter(
-                    room=room,
-                    tenant=tenant,
-                    status__in=['PENDING', 'IN_PROGRESS']
-                ).order_by('-created_at').first()
+            task = CleaningTask.objects.filter(
+                room=room,
+                tenant=tenant,
+                status__in=['PENDING', 'IN_PROGRESS']
+            ).order_by('-created_at').first()
 
+            if assigned_staff_id and assigned_staff_id != "No change":
                 if task:
                     task.assigned_staff_id = assigned_staff_id
                     if housekeeping_status == 'clean':
                         task.status = 'COMPLETED'
+                        task.completed_at = timezone.now()
                     task.save()
                 else:
                     task = CleaningTask.objects.create(
@@ -100,8 +102,14 @@ class CleaningTaskViewSet(HousekeepingBaseViewSet):
                         room=room,
                         assigned_staff_id=assigned_staff_id,
                         status='PENDING' if housekeeping_status != 'clean' else 'COMPLETED',
+                        completed_at=timezone.now() if housekeeping_status == 'clean' else None,
                         priority='ROUTINE'
                     )
+                created_tasks.append(task.id)
+            elif housekeeping_status == 'clean' and task:
+                task.status = 'COMPLETED'
+                task.completed_at = timezone.now()
+                task.save()
                 created_tasks.append(task.id)
 
         return Response({
