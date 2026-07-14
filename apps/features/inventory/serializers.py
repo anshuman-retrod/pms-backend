@@ -98,10 +98,25 @@ class InventoryUnitTypeSerializer(serializers.ModelSerializer):
 
 
 class InventoryUnitSerializer(serializers.ModelSerializer):
+    assigned_staff = serializers.SerializerMethodField()
+
     class Meta:
         model = InventoryUnit
         fields = '__all__'
         read_only_fields = ('id', 'tenant', 'created_at', 'updated_at', 'created_by', 'updated_by')
+
+    def get_assigned_staff(self, obj):
+        try:
+            from apps.features.housekeeping.models import CleaningTask
+            task = CleaningTask.objects.filter(
+                room=obj,
+                status__in=['PENDING', 'IN_PROGRESS']
+            ).order_by('-created_at').first()
+            if task and task.assigned_staff:
+                return task.assigned_staff.id
+        except ImportError:
+            pass
+        return None
 
     def validate(self, data):
         request = self.context.get('request')

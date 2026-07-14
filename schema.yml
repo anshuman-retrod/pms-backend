@@ -23601,6 +23601,9 @@ components:
           type: string
           format: uuid
           readOnly: true
+        assigned_staff:
+          type: string
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -23659,6 +23662,7 @@ components:
           format: uuid
           nullable: true
       required:
+      - assigned_staff
       - created_at
       - created_by
       - id
@@ -29206,6 +29210,9 @@ components:
         id:
           type: string
           format: uuid
+          readOnly: true
+        assigned_staff:
+          type: string
           readOnly: true
         created_at:
           type: string
