@@ -102,6 +102,14 @@ class CreateBookingSerializer(serializers.Serializer):
     services = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
     coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
+    # Corporate fields
+    corporate_po_ref = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    corporate_billing_type = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    corporate_employee_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    corporate_cost_center = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    corporate_gst_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    corporate_travel_purpose = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
 
 class PriceEstimationSerializer(serializers.Serializer):
     arrival_date = serializers.DateField()

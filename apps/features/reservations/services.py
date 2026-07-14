@@ -201,7 +201,13 @@ class BookingEngine:
             reservation_type=booking_data.get('reservation_type', 'Individual'),
             market_segment=booking_data.get('market_segment', 'Direct'),
             origin_country_id=booking_data.get('origin_country_id'),
-            confirmation_number=conf_no
+            confirmation_number=conf_no,
+            corporate_po_ref=booking_data.get('corporate_po_ref'),
+            corporate_billing_type=booking_data.get('corporate_billing_type'),
+            corporate_employee_id=booking_data.get('corporate_employee_id'),
+            corporate_cost_center=booking_data.get('corporate_cost_center'),
+            corporate_gst_number=booking_data.get('corporate_gst_number'),
+            corporate_travel_purpose=booking_data.get('corporate_travel_purpose')
         )
 
         total_amount = Decimal('0.00')

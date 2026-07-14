@@ -151,6 +151,7 @@ class InventoryUnitViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryUnitSerializer
     filterset_class = InventoryUnitFilter
     search_fields = ['code', 'name']
+    pagination_class = None
     
     def get_permissions(self):
         if self.action in ['list', 'retrieve', 'bulk_update']:

@@ -121,6 +121,9 @@ urlpatterns = [
     # Reservation Domain Endpoints
     path('api/reservations/', include('apps.features.reservations.urls')),
 
+    # Housekeeping Management Endpoints
+    path('api/housekeeping/', include('apps.features.housekeeping.urls')),
+
     # Subscription & Entitlement Module Endpoints
     path('api/subscriptions/', include('apps.core.subscriptions.urls')),
 

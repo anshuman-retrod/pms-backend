@@ -165,6 +165,8 @@ class GroupBlock(BaseModel):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     release_date = models.DateField(null=True, blank=True)
+    pickup_target = models.CharField(max_length=120, default="", blank=True)
+    pickup_location = models.CharField(max_length=255, default="", blank=True)
 
     class Meta:
         constraints = [

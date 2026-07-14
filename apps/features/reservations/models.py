@@ -82,6 +82,14 @@ class Reservation(BaseModel):
     remarks = models.TextField(null=True, blank=True)
     special_requests = models.TextField(null=True, blank=True)
 
+    # Corporate account specific fields
+    corporate_po_ref = models.CharField(max_length=64, null=True, blank=True)
+    corporate_billing_type = models.CharField(max_length=120, null=True, blank=True)
+    corporate_employee_id = models.CharField(max_length=64, null=True, blank=True)
+    corporate_cost_center = models.CharField(max_length=64, null=True, blank=True)
+    corporate_gst_number = models.CharField(max_length=32, null=True, blank=True)
+    corporate_travel_purpose = models.CharField(max_length=64, null=True, blank=True)
+
     class Meta:
         constraints = [
             models.CheckConstraint(
